@@ -23,5 +23,16 @@ public class Ball : MonoBehaviour
     {
         
     }
+
+    // Ensure the ball keeps a constant speed (prevents slowing/accelerating due to physics)
+    private void FixedUpdate()
+    {
+        if (rb == null) return;
+
+        Vector2 vel = rb.linearVelocity;
+        if (vel == Vector2.zero) return; // don't modify if stationary (e.g., before launch)
+
+        rb.linearVelocity = vel.normalized * Mathf.Abs(startingSpeed);
+    }
 }
 
