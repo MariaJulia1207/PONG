@@ -1,128 +1,137 @@
-using UnityEngine;
-using TMPro;
+using System;
+using System.Collections.Generic;
+using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using System.Threading;
-using System.Globalization;
+using UnityEngine;
+using TMPro;
 
 public class UdpClientController : MonoBehaviour
 {
-    [Header("UI")]
+    public string serverIP = "127.0.0.1";
+    public int serverPort = 9050;
+
+    [Header("Campos de Entrada (UI)")]
     public TMP_InputField ipInputField;
     public GameObject menuPanel;
 
-    [Header("Objetos em Cena")]
+    [Header("Objetos Visuais da Cena")]
     public Transform p1Paddle;
     public Transform p2Paddle;
     public Transform ballTransform;
-    public float paddleSpeed = 10f;
 
     private UdpClient client;
-    private IPEndPoint serverEP;
-    private Thread receiveThread;
+    private IPEndPoint serverEndPoint;
 
-    private int myId = -1;
-    private bool isConnected = false;
+    private int myPlayerID = 0; // 0 = Não conectado, 1 = P1, 2 = P2
+    private readonly Queue<Action> mainThreadActions = new Queue<Action>();
 
+    // Posições alvo recebidas da rede para movimentação suave
+    private float targetP1Y;
+    private float targetP2Y;
     private Vector3 targetBallPos;
-    private Vector3 targetP1Pos;
-    private Vector3 targetP2Pos;
 
     public void ConnectToServer()
     {
-        string ip = ipInputField != null && !string.IsNullOrEmpty(ipInputField.text) ? ipInputField.text : "127.0.0.1";
+        if (ipInputField != null && !string.IsNullOrEmpty(ipInputField.text))
+        {
+            serverIP = ipInputField.text;
+        }
 
         client = new UdpClient();
-        serverEP = new IPEndPoint(IPAddress.Parse(ip), 5001);
-        client.Connect(serverEP);
+        serverEndPoint = new IPEndPoint(IPAddress.Parse(serverIP), serverPort);
 
-        receiveThread = new Thread(ReceiveData);
-        receiveThread.IsBackground = true;
-        receiveThread.Start();
+        client.BeginReceive(OnDataReceived, null);
 
-        // Envia mensagem inicial ao servidor dedicado
-        byte[] hello = Encoding.UTF8.GetBytes("HELLO");
-        client.Send(hello, hello.Length);
+        // Manda mensagem de registro
+        SendData("CONNECT");
+        Debug.Log("[CLIENTE] Conectando ao servidor: " + serverIP);
 
         if (menuPanel != null) menuPanel.SetActive(false);
-        isConnected = true;
     }
 
-    void Update()
+    private void Update()
     {
-        if (!isConnected) return;
-
-        float inputV = Input.GetAxis("Vertical");
-
-        // Transmite o movimento da raquete atribuída
-        if (myId == 1 && p1Paddle != null)
+        // Executa ações de rede na thread principal
+        lock (mainThreadActions)
         {
-            p1Paddle.Translate(Vector3.up * inputV * paddleSpeed * Time.deltaTime);
-            SendPosition(p1Paddle.position.y);
-        }
-        else if (myId == 2 && p2Paddle != null)
-        {
-            p2Paddle.Translate(Vector3.up * inputV * paddleSpeed * Time.deltaTime);
-            SendPosition(p2Paddle.position.y);
-        }
-
-        // Interpolação do estado vindo do Servidor
-        if (ballTransform != null)
-            ballTransform.position = Vector3.Lerp(ballTransform.position, targetBallPos, Time.deltaTime * 25f);
-
-        if (myId == 1 && p2Paddle != null)
-            p2Paddle.position = Vector3.Lerp(p2Paddle.position, targetP2Pos, Time.deltaTime * 20f);
-        else if (myId == 2 && p1Paddle != null)
-            p1Paddle.position = Vector3.Lerp(p1Paddle.position, targetP1Pos, Time.deltaTime * 20f);
-    }
-
-    void SendPosition(float yPos)
-    {
-        string msg = "POS:" + yPos.ToString("F2", CultureInfo.InvariantCulture);
-        byte[] data = Encoding.UTF8.GetBytes(msg);
-        client.Send(data, data.Length);
-    }
-
-    void ReceiveData()
-    {
-        IPEndPoint remoteEP = new IPEndPoint(IPAddress.Any, 0);
-
-        while (isConnected)
-        {
-            try
+            while (mainThreadActions.Count > 0)
             {
-                byte[] data = client.Receive(ref remoteEP);
-                string msg = Encoding.UTF8.GetString(data);
+                mainThreadActions.Dequeue()?.Invoke();
+            }
+        }
 
-                if (msg.StartsWith("ASSIGN:"))
+        if (myPlayerID == 0) return;
+
+        // Capta o input do teclado do jogador local
+        float input = Input.GetAxisRaw("Vertical");
+        if (input != 0)
+        {
+            SendData($"MOVE:{input.ToString(CultureInfo.InvariantCulture)}");
+        }
+
+        // Aplica as posições sincronizadas pelo servidor na tela do cliente
+        p1Paddle.position = new Vector3(p1Paddle.position.x, targetP1Y, 0);
+        p2Paddle.position = new Vector3(p2Paddle.position.x, targetP2Y, 0);
+        ballTransform.position = targetBallPos;
+    }
+
+    private void OnDataReceived(IAsyncResult result)
+    {
+        try
+        {
+            IPEndPoint remoteEP = new IPEndPoint(IPAddress.Any, 0);
+            byte[] data = client.EndReceive(result, ref remoteEP);
+            string message = Encoding.UTF8.GetString(data);
+
+            if (message.StartsWith("ASSIGN"))
+            {
+                int assignedId = int.Parse(message.Split(':')[1]);
+                lock (mainThreadActions)
                 {
-                    myId = int.Parse(msg.Substring(7));
-                    Debug.Log("[CLIENTE] Conectado e atribuído como Jogador " + myId);
-                }
-                else if (msg.StartsWith("STATE:"))
-                {
-                    string[] parts = msg.Substring(6).Split(';');
-                    if (parts.Length == 4)
+                    mainThreadActions.Enqueue(() =>
                     {
-                        float bx = float.Parse(parts[0], CultureInfo.InvariantCulture);
-                        float by = float.Parse(parts[1], CultureInfo.InvariantCulture);
-                        float p1y = float.Parse(parts[2], CultureInfo.InvariantCulture);
-                        float p2y = float.Parse(parts[3], CultureInfo.InvariantCulture);
-
-                        targetBallPos = new Vector3(bx, by, 0);
-                        targetP1Pos = new Vector3(p1Paddle.position.x, p1y, 0);
-                        targetP2Pos = new Vector3(p2Paddle.position.x, p2y, 0);
-                    }
+                        myPlayerID = assignedId;
+                        Debug.Log("[CLIENTE] Conectado e atribuído como Jogador " + myPlayerID);
+                    });
                 }
             }
-            catch { break; }
+            else if (message.StartsWith("STATE"))
+            {
+                ParseGameState(message);
+            }
+
+            client.BeginReceive(OnDataReceived, null);
+        }
+        catch (ObjectDisposedException) { }
+    }
+
+    private void ParseGameState(string message)
+    {
+        string[] parts = message.Split('|');
+        if (parts.Length < 5) return;
+
+        if (float.TryParse(parts[1], NumberStyles.Any, CultureInfo.InvariantCulture, out float p1Y) &&
+            float.TryParse(parts[2], NumberStyles.Any, CultureInfo.InvariantCulture, out float p2Y) &&
+            float.TryParse(parts[3], NumberStyles.Any, CultureInfo.InvariantCulture, out float bx) &&
+            float.TryParse(parts[4], NumberStyles.Any, CultureInfo.InvariantCulture, out float by))
+        {
+            // Atualiza os alvos diretamente para consumo no Update()
+            targetP1Y = p1Y;
+            targetP2Y = p2Y;
+            targetBallPos = new Vector3(bx, by, 0);
         }
     }
 
-    void OnApplicationQuit()
+    private void SendData(string message)
     {
-        if (receiveThread != null && receiveThread.IsAlive) receiveThread.Abort();
-        if (client != null) client.Close();
+        byte[] data = Encoding.UTF8.GetBytes(message);
+        client.Send(data, data.Length, serverEndPoint);
+    }
+
+    private void OnApplicationQuit()
+    {
+        client?.Close();
     }
 }
