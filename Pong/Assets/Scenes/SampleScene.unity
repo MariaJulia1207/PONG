@@ -896,7 +896,7 @@ GameObject:
   - component: {fileID: 450225155}
   m_Layer: 0
   m_Name: Ball
-  m_TagString: Untagged
+  m_TagString: Ball
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -1525,8 +1525,10 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 3378e06b705166a4d84e24c1be67c815, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: '::'
-  moveSpeed: 5
+  m_EditorClassIdentifier: Assembly-CSharp::PaddleServer
+  moveSpeed: 10
+  yMin: -3.5
+  yMax: 3.5
 --- !u!1 &833475046
 GameObject:
   m_ObjectHideFlags: 0
@@ -2000,9 +2002,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 87d425a2696726c4babacc3b95d35ddc, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::UdpServerController
-  p1Paddle: {fileID: 798059929}
-  p2Paddle: {fileID: 2061258930}
-  ball: {fileID: 450225153}
+  port: 9050
+  ball: {fileID: 450225152}
+  ballRb: {fileID: 450225154}
+  player1Paddle: {fileID: 798059929}
+  player2Paddle: {fileID: 2061258930}
+  ballSpeed: 12
 --- !u!4 &1152097196
 Transform:
   m_ObjectHideFlags: 0
@@ -4042,10 +4047,12 @@ MonoBehaviour:
   m_GameObject: {fileID: 2061258927}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 612426a70b9f66741a743481ad0f918e, type: 3}
+  m_Script: {fileID: 11500000, guid: 3378e06b705166a4d84e24c1be67c815, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: '::'
-  moveSpeed: 5
+  m_EditorClassIdentifier: Assembly-CSharp::PaddleServer
+  moveSpeed: 10
+  yMin: -3.5
+  yMax: 3.5
 --- !u!1 &2135051627
 GameObject:
   m_ObjectHideFlags: 0

@@ -2,7 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using UnityEngine;
-using TMPro;
+using TMPro; // Usando TextMeshPro por padrão, troque por UnityEngine.UI se usar InputField normal
 
 public class UdpClientController : MonoBehaviour
 {
@@ -11,7 +11,7 @@ public class UdpClientController : MonoBehaviour
 
     [Header("UI & Referências")]
     public TMP_InputField ipInputField;
-    public ScoreUIController scoreUIController;
+    public GameObject connectionPanel; // Arraste o Painel de conexão aqui
 
     [Header("Objetos Visuais")]
     public Transform p1Paddle;
@@ -33,6 +33,12 @@ public class UdpClientController : MonoBehaviour
         serverEndPoint = new IPEndPoint(IPAddress.Parse(serverIP), serverPort);
         client.BeginReceive(OnDataReceived, null);
 
+        // Esconde o painel da UI imediatamente ao clicar no botão
+        if (connectionPanel != null)
+        {
+            connectionPanel.SetActive(false);
+        }
+
         SendData("CONNECT");
     }
 
@@ -49,41 +55,39 @@ public class UdpClientController : MonoBehaviour
 
     private void OnDataReceived(System.IAsyncResult result)
     {
-        IPEndPoint remoteEP = new IPEndPoint(IPAddress.Any, 0);
-        byte[] data = client.EndReceive(result, ref remoteEP);
-        string message = Encoding.UTF8.GetString(data);
+        try
+        {
+            IPEndPoint remoteEP = new IPEndPoint(IPAddress.Any, 0);
+            byte[] data = client.EndReceive(result, ref remoteEP);
+            string message = Encoding.UTF8.GetString(data);
 
-        if (message.StartsWith("ASSIGN"))
-        {
-            myPlayerID = int.Parse(message.Split(':')[1]);
-        }
-        else if (message.StartsWith("STATE"))
-        {
-            string[] parts = message.Split('|');
-            if (parts.Length >= 5)
+            if (message.StartsWith("ASSIGN") || message.StartsWith("ROLE:"))
             {
-                float p1Y = float.Parse(parts[1]);
-                float p2Y = float.Parse(parts[2]);
-                float ballX = float.Parse(parts[3]);
-                float ballY = float.Parse(parts[4]);
-
-                p1Paddle.position = new Vector3(p1Paddle.position.x, p1Y, 0);
-                p2Paddle.position = new Vector3(p2Paddle.position.x, p2Y, 0);
-                ballTransform.position = new Vector3(ballX, ballY, 0);
+                string[] parts = message.Split(new char[] { ':', '|' });
+                myPlayerID = int.Parse(parts[1]);
             }
-        }
-        else if (message.StartsWith("SCORE"))
-        {
-            string[] parts = message.Split('|');
-            if (parts.Length >= 3 && scoreUIController != null)
+            else if (message.StartsWith("STATE"))
             {
-                int p1Score = int.Parse(parts[1]);
-                int p2Score = int.Parse(parts[2]);
-                scoreUIController.SetScore(p1Score, p2Score);
-            }
-        }
+                string[] parts = message.Split('|');
+                if (parts.Length >= 5)
+                {
+                    float p1Y = float.Parse(parts[1]);
+                    float p2Y = float.Parse(parts[2]);
+                    float ballX = float.Parse(parts[3]);
+                    float ballY = float.Parse(parts[4]);
 
-        client.BeginReceive(OnDataReceived, null);
+                    p1Paddle.position = new Vector3(p1Paddle.position.x, p1Y, 0);
+                    p2Paddle.position = new Vector3(p2Paddle.position.x, p2Y, 0);
+                    ballTransform.position = new Vector3(ballX, ballY, 0);
+                }
+            }
+
+            client.BeginReceive(OnDataReceived, null);
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogWarning($"[CLIENTE] Erro ao receber dados: {e.Message}");
+        }
     }
 
     private void SendData(string message)
