@@ -2003,11 +2003,12 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::UdpServerController
   port: 9050
-  ball: {fileID: 450225152}
-  ballRb: {fileID: 450225154}
-  player1Paddle: {fileID: 798059929}
-  player2Paddle: {fileID: 2061258930}
+  p1Paddle: {fileID: 798059929}
+  p2Paddle: {fileID: 2061258930}
+  ballTransform: {fileID: 450225152}
+  paddleSpeed: 8
   ballSpeed: 12
+  maxScore: 5
 --- !u!4 &1152097196
 Transform:
   m_ObjectHideFlags: 0

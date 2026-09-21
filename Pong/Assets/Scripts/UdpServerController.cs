@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -7,195 +5,196 @@ using UnityEngine;
 
 public class UdpServerController : MonoBehaviour
 {
-    [Header("Configurações da Rede")]
     public int port = 9050;
-    private UdpClient udpServer;
-    private IPEndPoint remoteEP;
 
-    [Header("Referências do Jogo")]
-    public Transform ball;
-    public Rigidbody2D ballRb;
-    public Transform player1Paddle;
-    public Transform player2Paddle;
+    [Header("Objetos do Jogo (Servidor)")]
+    public Transform p1Paddle;
+    public Transform p2Paddle;
+    public Transform ballTransform;
 
-    [Header("Configurações da Bola")]
-    public float ballSpeed = 12f;
+    [Header("Configurações do Jogo")]
+    public float paddleSpeed = 8f;
+    public float ballSpeed = 10f;
+    public int maxScore = 5; // Limite de pontos para a vitória
 
-    // Clientes Conectados
-    private IPEndPoint client1EP = null;
-    private IPEndPoint client2EP = null;
+    private UdpClient server;
+    private IPEndPoint p1EndPoint;
+    private IPEndPoint p2EndPoint;
 
-    private int score1 = 0;
-    private int score2 = 0;
-    private bool gameStarted = false;
+    private int scoreP1 = 0;
+    private int scoreP2 = 0;
+    private bool isGameOver = false;
+
+    private Vector2 ballVelocity;
 
     void Start()
     {
-        // Inicializa o servidor UDP na porta especificada
-        udpServer = new UdpClient(port);
-        udpServer.Client.ReceiveTimeout = 1; // Leitura não-bloqueante
-        remoteEP = new IPEndPoint(IPAddress.Any, 0);
+        server = new UdpClient(port);
+        server.BeginReceive(OnDataReceived, null);
+        Debug.Log("[SERVIDOR] Servidor iniciado na porta " + port);
 
-        // Deixa a bola parada no centro aguardando jogadores
         ResetBall();
-        Debug.Log($"[SERVIDOR] Servidor rodando na porta {port}. Aguardando conexões...");
     }
 
     void Update()
     {
-        // Proteção contra referências nulas
-        if (ball == null || ballRb == null || player1Paddle == null || player2Paddle == null)
+        // Se o jogo acabou, não atualiza movimentos nem física
+        if (isGameOver) return;
+
+        // Movimentação simples da bola no Servidor
+        ballTransform.Translate(ballVelocity * Time.deltaTime);
+
+        // Verificação de limites das paredes para a bola rebate (Eixo Y)
+        if (Mathf.Abs(ballTransform.position.y) > 4.5f)
         {
-            Debug.LogWarning("[SERVIDOR] Por favor, atribua a Bola e as Raquetes no Inspector!");
-            return;
+            ballVelocity.y = -ballVelocity.y;
         }
 
-        // 1. Receber mensagens dos Clientes
-        ReceiveMessages();
-
-        // 2. Se a partida começou, mantém a física e velocidade da bola
-        if (gameStarted)
+        // Verificação de Ponto (Eixo X)
+        if (ballTransform.position.x > 9f)
         {
-            MaintainBallPhysics();
+            AddPointToPlayer(1); // P1 Pontua
+        }
+        else if (ballTransform.position.x < -9f)
+        {
+            AddPointToPlayer(2); // P2 Pontua
         }
 
-        // 3. Enviar atualização do estado do jogo para todos os clientes
-        SendGameState();
+        // Envia o estado atual do jogo para todos os clientes conectados
+        BroadcastState();
     }
 
-    private void ReceiveMessages()
+    private void AddPointToPlayer(int playerNum)
+    {
+        if (playerNum == 1) scoreP1++;
+        else if (playerNum == 2) scoreP2++;
+
+        // Notifica placar atual
+        BroadcastMessage($"SCORE|{scoreP1}|{scoreP2}");
+
+        // Checa condição de vitória
+        if (scoreP1 >= maxScore)
+        {
+            TriggerGameOver(1);
+        }
+        else if (scoreP2 >= maxScore)
+        {
+            TriggerGameOver(2);
+        }
+        else
+        {
+            ResetBall();
+        }
+    }
+
+    private void TriggerGameOver(int winner)
+    {
+        isGameOver = true;
+        ballVelocity = Vector2.zero; // Parar a bola
+        
+        // Avisa a todos quem ganhou (GAME_OVER|1 ou GAME_OVER|2)
+        BroadcastMessage($"GAME_OVER|{winner}");
+        Debug.Log($"[SERVIDOR] Fim de jogo! Jogador {winner} venceu.");
+    }
+
+    private void ResetBall()
+    {
+        ballTransform.position = Vector3.zero;
+        
+        // Direção aleatória no início
+        float dirX = Random.value > 0.5f ? 1f : -1f;
+        float dirY = Random.Range(-0.5f, 0.5f);
+        ballVelocity = new Vector2(dirX, dirY).normalized * ballSpeed;
+    }
+
+    private void RestartGame()
+    {
+        scoreP1 = 0;
+        scoreP2 = 0;
+        isGameOver = false;
+
+        // Notifica placar zerado e reinício
+        BroadcastMessage($"SCORE|{scoreP1}|{scoreP2}");
+        BroadcastMessage("GAME_RESET");
+
+        ResetBall();
+        Debug.Log("[SERVIDOR] O jogo foi reiniciado!");
+    }
+
+    private void OnDataReceived(System.IAsyncResult result)
     {
         try
         {
-            while (udpServer.Available > 0)
-            {
-                byte[] data = udpServer.Receive(ref remoteEP);
-                string message = Encoding.UTF8.GetString(data).Trim();
+            IPEndPoint clientEP = new IPEndPoint(IPAddress.Any, 0);
+            byte[] data = server.EndReceive(result, ref clientEP);
+            string message = Encoding.UTF8.GetString(data);
 
-                if (message == "CONNECT")
+            // Registro de novos jogadores
+            if (message.StartsWith("CONNECT"))
+            {
+                if (p1EndPoint == null)
                 {
-                    HandleConnection(remoteEP);
+                    p1EndPoint = clientEP;
+                    SendDataToClient(p1EndPoint, "ASSIGN:1");
                 }
-                else if (message.StartsWith("MOVE:"))
+                else if (p2EndPoint == null && !clientEP.Equals(p1EndPoint))
                 {
-                    HandleMovement(remoteEP, message);
+                    p2EndPoint = clientEP;
+                    SendDataToClient(p2EndPoint, "ASSIGN:2");
                 }
             }
-        }
-        catch (Exception)
-        {
-            // Exceções de timeout de leitura são ignoradas intencionalmente
-        }
-    }
-
-    private void HandleConnection(IPEndPoint endpoint)
-    {
-        if (client1EP == null)
-        {
-            client1EP = endpoint;
-            SendToClient("ROLE:1", client1EP);
-            Debug.Log($"[SERVIDOR] Jogador 1 conectado: {client1EP}");
-        }
-        else if (client2EP == null && !endpoint.Equals(client1EP))
-        {
-            client2EP = endpoint;
-            SendToClient("ROLE:2", client2EP);
-            Debug.Log($"[SERVIDOR] Jogador 2 conectado: {client2EP}");
-        }
-
-        // Se ambos se conectaram, inicia o jogo!
-        if (client1EP != null && client2EP != null && !gameStarted)
-        {
-            StartGame();
-        }
-    }
-
-    private void HandleMovement(IPEndPoint endpoint, string message)
-    {
-        string[] parts = message.Split(':');
-        if (parts.Length < 2) return;
-
-        if (float.TryParse(parts[1], out float newY))
-        {
-            // Atualiza a posição Y da raquete correspondente
-            if (endpoint.Equals(client1EP))
+            // Movimentação das raquetes
+            else if (message.StartsWith("MOVE:"))
             {
-                player1Paddle.position = new Vector3(player1Paddle.position.x, newY, 0);
+                if (isGameOver) return; // Não move raquetes se o jogo acabou
+
+                float moveAmount = float.Parse(message.Split(':')[1]);
+                
+                if (clientEP.Equals(p1EndPoint) && p1Paddle != null)
+                {
+                    p1Paddle.Translate(Vector3.up * moveAmount * paddleSpeed * Time.deltaTime);
+                }
+                else if (clientEP.Equals(p2EndPoint) && p2Paddle != null)
+                {
+                    p2Paddle.Translate(Vector3.up * moveAmount * paddleSpeed * Time.deltaTime);
+                }
             }
-            else if (endpoint.Equals(client2EP))
+            // Pedido de Reinício do Jogo
+            else if (message.StartsWith("RESTART"))
             {
-                player2Paddle.position = new Vector3(player2Paddle.position.x, newY, 0);
+                RestartGame();
             }
+
+            server.BeginReceive(OnDataReceived, null);
         }
-    }
-
-    private void StartGame()
-    {
-        gameStarted = true;
-        Debug.Log("[SERVIDOR] Dois jogadores conectados! Liberando a bola...");
-        LaunchBall();
-    }
-
-    public void ResetBall()
-    {
-        ball.position = Vector3.zero;
-        ballRb.linearVelocity = Vector2.zero;
-        gameStarted = false;
-    }
-
-    public void LaunchBall()
-    {
-        float x = UnityEngine.Random.value > 0.5f ? 1f : -1f;
-        float y = UnityEngine.Random.Range(-0.5f, 0.5f);
-        Vector2 dir = new Vector2(x, y).normalized;
-        ballRb.linearVelocity = dir * ballSpeed;
-        gameStarted = true;
-    }
-
-    private void MaintainBallPhysics()
-    {
-        // Evita loop perfeitamente horizontal
-        if (Mathf.Abs(ballRb.linearVelocity.y) < 0.5f)
+        catch (System.Exception e)
         {
-            float randomY = UnityEngine.Random.Range(0.3f, 0.8f) * (UnityEngine.Random.value > 0.5f ? 1 : -1);
-            ballRb.linearVelocity = new Vector2(ballRb.linearVelocity.x, randomY);
+            Debug.LogWarning("[SERVIDOR] Erro na recepção: " + e.Message);
         }
-
-        // Mantém a velocidade constante
-        ballRb.linearVelocity = ballRb.linearVelocity.normalized * ballSpeed;
     }
 
-    private void SendGameState()
+    private void BroadcastState()
     {
-        // Formato da mensagem: STATE:ballX:ballY:p1Y:p2Y:score1:score2
-        string state = $"STATE:{ball.position.x:F2}:{ball.position.y:F2}:{player1Paddle.position.y:F2}:{player2Paddle.position.y:F2}:{score1}:{score2}";
+        if (p1Paddle == null || p2Paddle == null || ballTransform == null) return;
 
-        if (client1EP != null) SendToClient(state, client1EP);
-        if (client2EP != null) SendToClient(state, client2EP);
+        string state = $"STATE|{p1Paddle.position.y}|{p2Paddle.position.y}|{ballTransform.position.x}|{ballTransform.position.y}";
+        BroadcastMessage(state);
     }
 
-    private void SendToClient(string message, IPEndPoint ep)
+    private void SendBroadcastMessage(string msg)
     {
-        byte[] data = Encoding.UTF8.GetBytes(message);
-        udpServer.Send(data, data.Length, ep);
+        if (p1EndPoint != null) SendDataToClient(p1EndPoint, msg);
+        if (p2EndPoint != null) SendDataToClient(p2EndPoint, msg);
     }
 
-    private void OnDestroy()
+    private void SendDataToClient(IPEndPoint target, string msg)
     {
-        if (udpServer != null) udpServer.Close();
+        byte[] data = Encoding.UTF8.GetBytes(msg);
+        server.Send(data, data.Length, target);
     }
 
-    // Método chamado pelos scripts de Gol no servidor
-    public void ScorePoint(int playerNumber)
+    private void OnApplicationQuit()
     {
-        if (playerNumber == 1) score1++;
-        else if (playerNumber == 2) score2++;
-
-        ResetBall();
-        // Relança a bola se ainda tivermos os 2 jogadores conectados
-        if (client1EP != null && client2EP != null)
-        {
-            Invoke(nameof(LaunchBall), 1.0f); // Espera 1 segundo para relançar
-        }
+        server?.Close();
     }
 }
