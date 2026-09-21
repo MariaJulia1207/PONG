@@ -1667,7 +1667,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!114 &738629054
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2754,7 +2754,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &1150282568
 RectTransform:
   m_ObjectHideFlags: 0
@@ -2863,10 +2863,11 @@ MonoBehaviour:
   p1Paddle: {fileID: 798059929}
   p2Paddle: {fileID: 2061258930}
   ballTransform: {fileID: 450225152}
-  scoreTextP1Object: {fileID: 1182664974}
-  scoreTextP2Object: {fileID: 1243049433}
+  scoreTextP1: {fileID: 0}
+  scoreTextP2: {fileID: 0}
   gameOverPanel: {fileID: 1150282567}
-  winnerTextObject: {fileID: 1259845907}
+  winnerText: {fileID: 0}
+  restartButton: {fileID: 0}
 --- !u!1 &1182326314
 GameObject:
   m_ObjectHideFlags: 0

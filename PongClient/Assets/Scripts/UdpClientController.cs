@@ -1,9 +1,12 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
-using TMPro;
 
 public class UdpClientController : MonoBehaviour
 {
@@ -16,156 +19,243 @@ public class UdpClientController : MonoBehaviour
     public Transform p2Paddle;
     public Transform ballTransform;
 
-    [Header("Interface de Usuário (Aceita Qualquer Objeto de Texto)")]
-    public GameObject scoreTextP1Object;
-    public GameObject scoreTextP2Object;
+    [Header("Interface de Usuário (UI)")]
+    public TMP_Text scoreTextP1;
+    public TMP_Text scoreTextP2;
     public GameObject gameOverPanel;
-    public GameObject winnerTextObject;
+    public TMP_Text winnerText;
+    public Button restartButton;
 
-    private UdpClient client;
-    private IPEndPoint serverEndPoint;
-    private int myPlayerID = 0;
+    private UdpClient udpClient;
+    private IPEndPoint serverEP;
+    private int playerRole = 0; // 1 = P1, 2 = P2
+    private bool isConnected = false;
 
-    private Vector3 targetP1Pos;
-    private Vector3 targetP2Pos;
-    private Vector3 targetBallPos;
-    private string pendingScoreP1 = "0";
-    private string pendingScoreP2 = "0";
-    private string pendingWinnerText = "";
-    private bool showGameOver = false;
-    private bool hideGameOver = false;
+    // Fila para executar ações com segurança na Main Thread da Unity
+    private static readonly Queue<Action> mainThreadQueue = new Queue<Action>();
 
     void Start()
     {
-        if (gameOverPanel != null) 
-            gameOverPanel.SetActive(false);
+        if (gameOverPanel != null) gameOverPanel.SetActive(false);
 
-        client = new UdpClient();
-        serverEndPoint = new IPEndPoint(IPAddress.Parse(serverIP), serverPort);
+        if (restartButton != null)
+        {
+            restartButton.onClick.AddListener(SendRestartRequest);
+        }
 
-        client.BeginReceive(OnDataReceived, null);
-        SendDataToServer("CONNECT");
+        ConnectToServer();
+    }
+
+    public void ConnectToServer()
+    {
+        CloseSocket(); // Limpa conexões anteriores se existirem
+
+        if (!IPAddress.TryParse(serverIP, out IPAddress parsedAddress))
+        {
+            Debug.LogError($"[CLIENTE] Endereço IP inválido: {serverIP}");
+            return;
+        }
+
+        try
+        {
+            udpClient = new UdpClient();
+            serverEP = new IPEndPoint(parsedAddress, serverPort);
+
+            // Envia o pedido de conexão para o Servidor
+            byte[] data = Encoding.UTF8.GetBytes("CONNECT");
+            udpClient.Send(data, data.Length, serverEP);
+
+            udpClient.BeginReceive(OnDataReceived, null);
+            isConnected = true;
+            Debug.Log($"[CLIENTE] Conectado ao servidor em {serverIP}:{serverPort}");
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"[CLIENTE] Erro ao conectar: {e.Message}");
+        }
     }
 
     void Update()
     {
+        // Processa ações acumuladas que precisam de rodar na Main Thread
+        lock (mainThreadQueue)
+        {
+            while (mainThreadQueue.Count > 0)
+            {
+                mainThreadQueue.Dequeue()?.Invoke();
+            }
+        }
+
+        if (!isConnected || playerRole == 0) return;
+
+        // Captura movimento do jogador (Setas Cima/Baixo ou W/S)
         float moveInput = Input.GetAxisRaw("Vertical");
-        if (moveInput != 0 && myPlayerID != 0)
+
+        if (moveInput != 0)
         {
-            SendDataToServer($"MOVE:{moveInput}");
-        }
-
-        if (p1Paddle != null) 
-            p1Paddle.position = Vector3.Lerp(p1Paddle.position, targetP1Pos, Time.deltaTime * 15f);
-        
-        if (p2Paddle != null) 
-            p2Paddle.position = Vector3.Lerp(p2Paddle.position, targetP2Pos, Time.deltaTime * 15f);
-        
-        if (ballTransform != null) 
-            ballTransform.position = Vector3.Lerp(ballTransform.position, targetBallPos, Time.deltaTime * 15f);
-
-        // Atualiza os textos aceitando tanto TextMeshPro quanto Legacy Text
-        SetTextValue(scoreTextP1Object, pendingScoreP1);
-        SetTextValue(scoreTextP2Object, pendingScoreP2);
-
-        if (showGameOver)
-        {
-            if (gameOverPanel != null) gameOverPanel.SetActive(true);
-            SetTextValue(winnerTextObject, pendingWinnerText);
-            showGameOver = false;
-        }
-
-        if (hideGameOver)
-        {
-            if (gameOverPanel != null) gameOverPanel.SetActive(false);
-            hideGameOver = false;
+            string msg = $"MOVE:{moveInput.ToString(CultureInfo.InvariantCulture)}";
+            byte[] data = Encoding.UTF8.GetBytes(msg);
+            try
+            {
+                udpClient?.Send(data, data.Length, serverEP);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning("[CLIENTE] Erro ao enviar pacote de movimento: " + ex.Message);
+            }
         }
     }
 
-    // Função auxiliar que define o texto independente do tipo de componente usado
-    private void SetTextValue(GameObject textObj, string value)
-    {
-        if (textObj == null) return;
-
-        // Tenta atualizar como TextMeshPro
-        TMP_Text tmp = textObj.GetComponent<TMP_Text>();
-        if (tmp != null)
-        {
-            tmp.text = value;
-            return;
-        }
-
-        // Tenta atualizar como Text Antigo (Legacy)
-        Text legacyText = textObj.GetComponent<Text>();
-        if (legacyText != null)
-        {
-            legacyText.text = value;
-        }
-    }
-
-    private void OnDataReceived(System.IAsyncResult result)
+    private void OnDataReceived(IAsyncResult result)
     {
         try
         {
-            IPEndPoint remoteEP = new IPEndPoint(IPAddress.Any, 0);
-            byte[] data = client.EndReceive(result, ref remoteEP);
-            string message = Encoding.UTF8.GetString(data);
+            if (udpClient == null || udpClient.Client == null) return;
 
+            IPEndPoint ep = new IPEndPoint(IPAddress.Any, 0);
+            byte[] data = udpClient.EndReceive(result, ref ep);
+            string message = Encoding.UTF8.GetString(data).Trim();
+
+            // Atribuição de número do Jogador (ASSIGN:1 ou ASSIGN:2)
             if (message.StartsWith("ASSIGN:"))
             {
-                myPlayerID = int.Parse(message.Split(':')[1]);
-                Debug.Log($"[CLIENTE] Atribuído como Jogador {myPlayerID}");
+                if (int.TryParse(message.Split(':')[1], out int assignedId))
+                {
+                    EnqueueMainThread(() =>
+                    {
+                        playerRole = assignedId;
+                        Debug.Log($"[CLIENTE] Atribuído como Jogador {playerRole}");
+                    });
+                }
             }
+            // Estado de posições (STATE|p1Y|p2Y|ballX|ballY)
             else if (message.StartsWith("STATE|"))
             {
-                string[] parts = message.Split('|');
-                float p1Y = float.Parse(parts[1]);
-                float p2Y = float.Parse(parts[2]);
-                float ballX = float.Parse(parts[3]);
-                float ballY = float.Parse(parts[4]);
-
-                targetP1Pos = new Vector3(p1Paddle != null ? p1Paddle.position.x : -8f, p1Y, 0);
-                targetP2Pos = new Vector3(p2Paddle != null ? p2Paddle.position.x : 8f, p2Y, 0);
-                targetBallPos = new Vector3(ballX, ballY, 0);
+                ParseState(message);
             }
+            // Placar do jogo (SCORE|p1Score|p2Score)
             else if (message.StartsWith("SCORE|"))
             {
-                string[] parts = message.Split('|');
-                pendingScoreP1 = parts[1];
-                pendingScoreP2 = parts[2];
+                ParseScore(message);
             }
+            // Fim de jogo (GAME_OVER|winner)
             else if (message.StartsWith("GAME_OVER|"))
             {
-                int winner = int.Parse(message.Split('|')[1]);
-                pendingWinnerText = $"Jogador {winner} Venceu!";
-                showGameOver = true;
+                if (int.TryParse(message.Split('|')[1], out int winner))
+                {
+                    EnqueueMainThread(() => ShowGameOver(winner));
+                }
             }
-            else if (message.Equals("GAME_RESET"))
+            // Reinício de partida
+            else if (message == "GAME_RESET")
             {
-                hideGameOver = true;
+                EnqueueMainThread(HideGameOver);
             }
 
-            client.BeginReceive(OnDataReceived, null);
+            // Continua a escutar a rede
+            udpClient.BeginReceive(OnDataReceived, null);
         }
-        catch (System.Exception e)
+        catch (ObjectDisposedException)
         {
-            Debug.LogWarning("[CLIENTE] Erro no recebimento de dados: " + e.Message);
+            // Exceção normal disparada ao fechar o jogo ou socket
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning("[CLIENTE] Erro na recepção UDP: " + e.Message);
         }
     }
 
-    public void RequestRestart()
+    private void ParseState(string message)
     {
-        SendDataToServer("RESTART");
+        string[] parts = message.Split('|');
+        if (parts.Length < 5) return;
+
+        if (float.TryParse(parts[1], NumberStyles.Any, CultureInfo.InvariantCulture, out float p1Y) &&
+            float.TryParse(parts[2], NumberStyles.Any, CultureInfo.InvariantCulture, out float p2Y) &&
+            float.TryParse(parts[3], NumberStyles.Any, CultureInfo.InvariantCulture, out float ballX) &&
+            float.TryParse(parts[4], NumberStyles.Any, CultureInfo.InvariantCulture, out float ballY))
+        {
+            EnqueueMainThread(() =>
+            {
+                if (p1Paddle != null) p1Paddle.position = new Vector3(p1Paddle.position.x, p1Y, 0);
+                if (p2Paddle != null) p2Paddle.position = new Vector3(p2Paddle.position.x, p2Y, 0);
+                if (ballTransform != null) ballTransform.position = new Vector3(ballX, ballY, 0);
+            });
+        }
     }
 
-    private void SendDataToServer(string msg)
+    private void ParseScore(string message)
     {
-        byte[] data = Encoding.UTF8.GetBytes(msg);
-        client.Send(data, data.Length, serverEndPoint);
+        string[] parts = message.Split('|');
+        if (parts.Length < 3) return;
+
+        string s1 = parts[1];
+        string s2 = parts[2];
+
+        EnqueueMainThread(() =>
+        {
+            if (scoreTextP1 != null) scoreTextP1.text = s1;
+            if (scoreTextP2 != null) scoreTextP2.text = s2;
+        });
+    }
+
+    private void ShowGameOver(int winner)
+    {
+        if (gameOverPanel != null) gameOverPanel.SetActive(true);
+        if (winnerText != null)
+        {
+            winnerText.text = (winner == playerRole) ? "VOCÊ VENCEU!" : "VOCÊ PERDEU!";
+        }
+    }
+
+    private void HideGameOver()
+    {
+        if (gameOverPanel != null) gameOverPanel.SetActive(false);
+    }
+
+    public void SendRestartRequest()
+    {
+        if (udpClient == null || serverEP == null) return;
+        try
+        {
+            byte[] data = Encoding.UTF8.GetBytes("RESTART");
+            udpClient.Send(data, data.Length, serverEP);
+        }
+        catch (Exception e)
+        {
+            Debug.LogError("[CLIENTE] Erro ao enviar solicitação de reinício: " + e.Message);
+        }
+    }
+
+    private void EnqueueMainThread(Action action)
+    {
+        lock (mainThreadQueue)
+        {
+            mainThreadQueue.Enqueue(action);
+        }
+    }
+
+    private void OnDestroy()
+    {
+        CloseSocket();
     }
 
     private void OnApplicationQuit()
     {
-        client?.Close();
+        CloseSocket();
+    }
+
+    private void CloseSocket()
+    {
+        if (udpClient != null)
+        {
+            try
+            {
+                udpClient.Close();
+            }
+            catch { }
+            udpClient = null;
+        }
+        isConnected = false;
     }
 }
