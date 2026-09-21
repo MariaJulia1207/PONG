@@ -1,27 +1,18 @@
 using UnityEngine;
 
-public class P1 : MonoBehaviour
+public class PaddleServer : MonoBehaviour
 {
-    public float moveSpeed;
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
-    void Start()
+    public float moveSpeed = 10f;
+    public float yMin = -3.5f; // Limite inferior da tela
+    public float yMax = 3.5f;  // Limite superior da tela
+
+    // Função chamada pelo PongServer ao receber comandos dos clientes
+    public void MovePaddle(float direction)
     {
+        Vector3 newPos = transform.position + Vector3.up * direction * moveSpeed * Time.deltaTime;
         
-    }
-
-    // Update is called once per frame
-    void Update()
-    {
-        bool isPressingUp = Input.GetKey(KeyCode.W);
-        bool isPressingDown = Input.GetKey(KeyCode.S);
-
-        if (isPressingUp)
-        {
-            transform.Translate(Vector3.up * Time.deltaTime * moveSpeed);
-        }
-        if (isPressingDown)
-        {
-            transform.Translate(Vector3.down * Time.deltaTime  * moveSpeed);
-        }
+        // Trava a raquete dentro da tela
+        newPos.y = Mathf.Clamp(newPos.y, yMin, yMax);
+        transform.position = newPos;
     }
 }
