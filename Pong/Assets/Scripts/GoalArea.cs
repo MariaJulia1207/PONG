@@ -9,7 +9,8 @@ public class GoalArea : MonoBehaviour
 
     private void Start()
     {
-        Ball b = FindObjectOfType<Ball>();
+        // Substituído FindObjectOfType por FindAnyObjectByType para eliminar o warning CS0618
+        Ball b = FindAnyObjectByType<Ball>();
         if (b != null)
         {
             ballStartPosition = b.transform.position;
@@ -34,6 +35,7 @@ public class GoalArea : MonoBehaviour
             return;
         }
 
+        // Adiciona ponto ao jogador correto
         if (goalOwner == 1)
         {
             scoreUIController?.AddGoalToPlayer(2);
@@ -43,24 +45,10 @@ public class GoalArea : MonoBehaviour
             scoreUIController?.AddGoalToPlayer(1);
         }
 
-        Rigidbody2D ballRb = ball.rb != null ? ball.rb : other.GetComponent<Rigidbody2D>();
-        if (ballRb != null)
-        {
-            // stop and reset to the recorded initial position
-            ballRb.linearVelocity = Vector2.zero;
-            other.transform.position = ballStartPosition;
+        // Reseta a posição da bola para o centro
+        other.transform.position = ballStartPosition;
 
-            // relaunch the ball similarly to Ball.Start()
-            bool isRight = UnityEngine.Random.value >= 0.5f;
-            float xVelocity = isRight ? 1f : -1f;
-            float yVelocity = UnityEngine.Random.Range(-1f, 1f);
-            if (Mathf.Abs(yVelocity) < 0.2f)
-            {
-                yVelocity = UnityEngine.Random.value >= 0.5f ? 0.5f : -0.5f;
-            }
-
-            float speed = ball.startingSpeed;
-            ballRb.linearVelocity = new Vector2(xVelocity * speed, yVelocity * speed);
-        }
+        // Executa o novo lançamento seguro através do próprio script da bola
+        ball.LaunchBall();
     }
 }
