@@ -1,110 +1,154 @@
-using UnityEngine;
+using System;
+using System.Collections.Generic;
+using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using System.Threading;
-using System.Collections.Generic;
-using System.Globalization;
+using UnityEngine;
 
-public class UdpServerController : MonoBehaviour
+public class PongServerController : MonoBehaviour
 {
-    private UdpClient server;
-    private IPEndPoint anyEP;
-    private Thread receiveThread;
+    public int port = 9050;
+    private UdpClient udpServer;
+    private IPEndPoint client1EndPoint = null;
+    private IPEndPoint client2EndPoint = null;
 
-    private Dictionary<string, int> clientIds = new Dictionary<string, int>();
-    private Dictionary<int, IPEndPoint> clientEndPoints = new Dictionary<int, IPEndPoint>();
+    [Header("Objetos do Jogo")]
+    public Transform player1Paddle;
+    public Transform player2Paddle;
+    public Ball ball; // Referência ao script Ball do Servidor
 
-    [Header("Objetos do Jogo (Física Central)")]
-    public Transform p1Paddle;
-    public Transform p2Paddle;
-    public Ball ball;
+    public float paddleSpeed = 10f;
+    private bool gameStarted = false;
 
-    private float p1TargetY;
-    private float p2TargetY;
+    // Fila para executar ações da Thread de Rede dentro da Main Thread do Unity
+    private readonly Queue<Action> mainThreadActions = new Queue<Action>();
 
     void Start()
     {
-        server = new UdpClient(5001);
-        anyEP = new IPEndPoint(IPAddress.Any, 0);
+        // Garante que a bola comece parada no centro
+        if (ball != null && ball.rb != null)
+        {
+            ball.rb.linearVelocity = Vector2.zero;
+        }
 
-        receiveThread = new Thread(ReceiveData);
-        receiveThread.IsBackground = true;
-        receiveThread.Start();
-
-        Debug.Log("[SERVIDOR DEDICADO] Rodando na porta 5001. Aguardando 2 clientes...");
+        udpServer = new UdpClient(port);
+        udpServer.BeginReceive(OnDataReceived, null);
+        Debug.Log("[SERVIDOR] Rodando na porta " + port + ". Aguardando jogadores...");
     }
 
     void Update()
     {
-        // Atualiza posição das raquetes no servidor baseado na rede
-        if (p1Paddle != null) p1Paddle.position = new Vector3(p1Paddle.position.x, p1TargetY, 0);
-        if (p2Paddle != null) p2Paddle.position = new Vector3(p2Paddle.position.x, p2TargetY, 0);
-
-        // Envia estado atualizado do jogo para ambos os clientes conectados
-        BroadcastGameState();
-    }
-
-    void BroadcastGameState()
-    {
-        if (clientEndPoints.Count == 0) return;
-
-        string bX = ball.transform.position.x.ToString("F2", CultureInfo.InvariantCulture);
-        string bY = ball.transform.position.y.ToString("F2", CultureInfo.InvariantCulture);
-        string p1Y = p1Paddle.position.y.ToString("F2", CultureInfo.InvariantCulture);
-        string p2Y = p2Paddle.position.y.ToString("F2", CultureInfo.InvariantCulture);
-
-        string stateMsg = $"STATE:{bX};{bY};{p1Y};{p2Y}";
-        byte[] bdata = Encoding.UTF8.GetBytes(stateMsg);
-
-        foreach (var kvp in clientEndPoints)
+        // Executa comandos recebidos da rede com segurança na Main Thread
+        lock (mainThreadActions)
         {
-            server.Send(bdata, bdata.Length, kvp.Value);
+            while (mainThreadActions.Count > 0)
+            {
+                mainThreadActions.Dequeue()?.Invoke();
+            }
+        }
+
+        // Transmite o estado do jogo para os clientes apenas após ambos conectarem
+        if (gameStarted)
+        {
+            string p1Y = player1Paddle.position.y.ToString("F2", CultureInfo.InvariantCulture);
+            string p2Y = player2Paddle.position.y.ToString("F2", CultureInfo.InvariantCulture);
+            string bX = ball.transform.position.x.ToString("F2", CultureInfo.InvariantCulture);
+            string bY = ball.transform.position.y.ToString("F2", CultureInfo.InvariantCulture);
+
+            string gameState = $"STATE|{p1Y}|{p2Y}|{bX}|{bY}";
+
+            if (client1EndPoint != null) SendToClient(client1EndPoint, gameState);
+            if (client2EndPoint != null) SendToClient(client2EndPoint, gameState);
         }
     }
 
-    void ReceiveData()
+    private void OnDataReceived(IAsyncResult result)
     {
-        while (true)
+        try
         {
-            try
+            IPEndPoint remoteEP = new IPEndPoint(IPAddress.Any, 0);
+            byte[] receivedBytes = udpServer.EndReceive(result, ref remoteEP);
+            string message = Encoding.UTF8.GetString(receivedBytes);
+
+            if (message == "CONNECT")
             {
-                byte[] data = server.Receive(ref anyEP);
-                string msg = Encoding.UTF8.GetString(data);
-                string key = anyEP.Address + ":" + anyEP.Port;
-
-                // Registra novos clientes (Até no máximo 2)
-                if (!clientIds.ContainsKey(key) && clientIds.Count < 2)
+                lock (mainThreadActions)
                 {
-                    int assignedId = clientIds.Count + 1;
-                    clientIds[key] = assignedId;
-                    clientEndPoints[assignedId] = new IPEndPoint(anyEP.Address, anyEP.Port);
-
-                    string assignMsg = "ASSIGN:" + assignedId;
-                    byte[] aData = Encoding.UTF8.GetBytes(assignMsg);
-                    server.Send(aData, aData.Length, anyEP);
-
-                    Debug.Log($"[SERVIDOR] Cliente registrado como Jogador {assignedId}");
-                }
-
-                if (clientIds.ContainsKey(key))
-                {
-                    int id = clientIds[key];
-                    if (msg.StartsWith("POS:"))
-                    {
-                        float yVal = float.Parse(msg.Substring(4), CultureInfo.InvariantCulture);
-                        if (id == 1) p1TargetY = yVal;
-                        else if (id == 2) p2TargetY = yVal;
-                    }
+                    mainThreadActions.Enqueue(() => RegisterClient(remoteEP));
                 }
             }
-            catch { break; }
+            else if (message.StartsWith("MOVE"))
+            {
+                lock (mainThreadActions)
+                {
+                    mainThreadActions.Enqueue(() => ProcessMovement(remoteEP, message));
+                }
+            }
+
+            udpServer.BeginReceive(OnDataReceived, null);
+        }
+        catch (ObjectDisposedException) { }
+    }
+
+    private void RegisterClient(IPEndPoint endPoint)
+    {
+        if (client1EndPoint == null)
+        {
+            client1EndPoint = endPoint;
+            SendToClient(client1EndPoint, "ASSIGN:1");
+            Debug.Log("[SERVIDOR] Jogador 1 conectado: " + endPoint);
+        }
+        else if (client2EndPoint == null && !endPoint.Equals(client1EndPoint))
+        {
+            client2EndPoint = endPoint;
+            SendToClient(client2EndPoint, "ASSIGN:2");
+            Debug.Log("[SERVIDOR] Jogador 2 conectado: " + endPoint);
+
+            // Inicia o jogo automaticamente ao conectar o 2º cliente
+            StartGame();
         }
     }
 
-    void OnApplicationQuit()
+    private void StartGame()
     {
-        if (receiveThread != null && receiveThread.IsAlive) receiveThread.Abort();
-        if (server != null) server.Close();
+        gameStarted = true;
+        Debug.Log("[SERVIDOR] Ambos os jogadores conectados! Lançando a bola...");
+        
+        if (ball != null)
+        {
+            ball.LaunchBall(); // Executa o método de lançamento da bola no Servidor
+        }
+    }
+
+    private void ProcessMovement(IPEndPoint sender, string message)
+    {
+        if (!gameStarted) return; // Não permite mover antes do jogo começar
+
+        string[] parts = message.Split(':');
+        if (parts.Length < 2) return;
+
+        if (float.TryParse(parts[1], NumberStyles.Any, CultureInfo.InvariantCulture, out float direction))
+        {
+            if (sender.Equals(client1EndPoint))
+            {
+                player1Paddle.Translate(Vector3.up * direction * paddleSpeed * Time.deltaTime);
+            }
+            else if (sender.Equals(client2EndPoint))
+            {
+                player2Paddle.Translate(Vector3.up * direction * paddleSpeed * Time.deltaTime);
+            }
+        }
+    }
+
+    private void SendToClient(IPEndPoint endPoint, string message)
+    {
+        byte[] data = Encoding.UTF8.GetBytes(message);
+        udpServer.Send(data, data.Length, endPoint);
+    }
+
+    private void OnApplicationQuit()
+    {
+        udpServer?.Close();
     }
 }
