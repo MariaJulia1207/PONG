@@ -36,13 +36,15 @@ public class UdpClientController : MonoBehaviour
     private int playerRole = 0; // 1 = P1, 2 = P2
     private bool isConnected = false;
 
+    // Fila para executar ações na Main Thread da Unity
     private static readonly Queue<Action> mainThreadQueue = new Queue<Action>();
 
     void Start()
     {
         Application.runInBackground = true;
 
-        if (gameOverPanel != null) gameOverPanel.SetActive(false);
+        if (gameOverPanel != null) 
+            gameOverPanel.SetActive(false);
 
         if (ipInputField != null && string.IsNullOrEmpty(ipInputField.text))
         {
@@ -86,6 +88,7 @@ public class UdpClientController : MonoBehaviour
         {
             udpClient = new UdpClient();
 
+            // Previne falha de fechamento de conexão UDP silenciosa no Windows
             const int SIO_UDP_CONNRESET = -1744830452;
             try
             {
@@ -95,6 +98,7 @@ public class UdpClientController : MonoBehaviour
 
             serverEP = new IPEndPoint(parsedAddress, serverPort);
 
+            // Envia pacote de conexão para o Servidor
             byte[] data = Encoding.UTF8.GetBytes("CONNECT");
             udpClient.Send(data, data.Length, serverEP);
 
@@ -110,6 +114,7 @@ public class UdpClientController : MonoBehaviour
 
     void Update()
     {
+        // Descarrega as ações pendentes na Thread Principal da Unity
         lock (mainThreadQueue)
         {
             while (mainThreadQueue.Count > 0)
@@ -120,6 +125,7 @@ public class UdpClientController : MonoBehaviour
 
         if (!isConnected || playerRole == 0) return;
 
+        // Captura entrada do jogador e envia para o servidor
         float moveInput = Input.GetAxisRaw("Vertical");
 
         if (moveInput != 0)
@@ -183,10 +189,12 @@ public class UdpClientController : MonoBehaviour
                 EnqueueMainThread(HideGameOver);
             }
 
+            // Mantém o escutador UDP ativo
             udpClient.BeginReceive(OnDataReceived, null);
         }
         catch (ObjectDisposedException)
         {
+            // Socket foi fechado normalmente
         }
         catch (Exception e)
         {
@@ -226,13 +234,11 @@ public class UdpClientController : MonoBehaviour
             if (scoreTextP1 != null) 
             {
                 scoreTextP1.text = s1;
-                scoreTextP1.SetAllDirty();
             }
 
             if (scoreTextP2 != null) 
             {
                 scoreTextP2.text = s2;
-                scoreTextP2.SetAllDirty();
             }
         });
     }
@@ -295,5 +301,6 @@ public class UdpClientController : MonoBehaviour
             udpClient = null;
         }
         isConnected = false;
+        playerRole = 0;
     }
 }

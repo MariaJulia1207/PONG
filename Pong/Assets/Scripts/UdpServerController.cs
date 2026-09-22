@@ -1,6 +1,4 @@
-using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -8,301 +6,80 @@ using UnityEngine;
 
 public class UdpServerController : MonoBehaviour
 {
-    public int port = 9050;
+    [Header("Configurações do Servidor")]
+    public int listenPort = 9050;
 
-    [Header("Objetos do Jogo (Servidor)")]
-    public Transform p1Paddle;
-    public Transform p2Paddle;
-    public Transform ballTransform;
-
-    [Header("Configurações do Jogo")]
-    public float paddleSpeed = 8f;
-    public float ballSpeed = 7f;
-    public int maxScore = 5;
-
-    private UdpClient server;
-    private IPEndPoint p1EndPoint;
-    private IPEndPoint p2EndPoint;
+    private UdpClient udpServer;
+    private List<IPEndPoint> connectedClients = new List<IPEndPoint>();
 
     private int scoreP1 = 0;
     private int scoreP2 = 0;
-    private bool isGameOver = false;
-    private bool gameStarted = false;
 
-    private Vector2 ballVelocity;
-
-    private readonly Queue<Action> mainThreadActions = new Queue<Action>();
-
-    void Start()
+    private void Start()
     {
-        Application.runInBackground = true;
-
-        server = new UdpClient(port);
-
-        const int SIO_UDP_CONNRESET = -1744830452;
-        try
-        {
-            server.Client.IOControl((IOControlCode)SIO_UDP_CONNRESET, new byte[] { 0 }, null);
-        }
-        catch { }
-
-        server.BeginReceive(OnDataReceived, null);
-        Debug.Log("[SERVIDOR] Servidor iniciado na porta " + port);
-
-        ResetGameToWaitingState();
+        udpServer = new UdpClient(listenPort);
+        udpServer.BeginReceive(OnDataReceived, null);
+        Debug.Log("[SERVIDOR] Servidor UDP iniciado na porta " + listenPort);
     }
 
-    void Update()
-    {
-        lock (mainThreadActions)
-        {
-            while (mainThreadActions.Count > 0)
-            {
-                mainThreadActions.Dequeue()?.Invoke();
-            }
-        }
-
-        if (!gameStarted || isGameOver)
-        {
-            if (ballTransform != null) ballTransform.position = Vector3.zero;
-            BroadcastState();
-            return;
-        }
-
-        // Movimentação da bola
-        ballTransform.Translate(ballVelocity * Time.deltaTime);
-
-        // Rebatida nas paredes superior e inferior
-        if (Mathf.Abs(ballTransform.position.y) > 4.5f)
-        {
-            ballVelocity.y = -ballVelocity.y;
-            float clampedY = Mathf.Clamp(ballTransform.position.y, -4.5f, 4.5f);
-            ballTransform.position = new Vector3(ballTransform.position.x, clampedY, 0);
-        }
-
-        // Colisão com as raquetes
-        CheckPaddleCollision();
-
-        // Verificação de Ponto
-        if (ballTransform.position.x > 9f)
-        {
-            AddPointToPlayer(1);
-        }
-        else if (ballTransform.position.x < -9f)
-        {
-            AddPointToPlayer(2);
-        }
-
-        BroadcastState();
-    }
-
-    private void OnDataReceived(IAsyncResult result)
+    private void OnDataReceived(System.IAsyncResult result)
     {
         try
         {
-            IPEndPoint clientEP = new IPEndPoint(IPAddress.Any, 0);
-            byte[] data = server.EndReceive(result, ref clientEP);
-            string message = Encoding.UTF8.GetString(data).Trim();
+            IPEndPoint remoteEP = new IPEndPoint(IPAddress.Any, 0);
+            byte[] data = udpServer.EndReceive(result, ref remoteEP);
+            string message = Encoding.UTF8.GetString(data);
 
-            if (message.StartsWith("CONNECT"))
+            if (!connectedClients.Contains(remoteEP))
             {
-                lock (mainThreadActions)
-                {
-                    mainThreadActions.Enqueue(() =>
-                    {
-                        if (p1EndPoint == null)
-                        {
-                            p1EndPoint = clientEP;
-                            SendDataToClient(p1EndPoint, "ASSIGN:1");
-                            SendDataToClient(p1EndPoint, $"SCORE|{scoreP1}|{scoreP2}");
-                            Debug.Log("[SERVIDOR] Jogador 1 conectado: " + clientEP);
-                        }
-                        else if (p2EndPoint == null && !clientEP.Equals(p1EndPoint))
-                        {
-                            p2EndPoint = clientEP;
-                            SendDataToClient(p2EndPoint, "ASSIGN:2");
-                            SendDataToClient(p2EndPoint, $"SCORE|{scoreP1}|{scoreP2}");
-                            Debug.Log("[SERVIDOR] Jogador 2 conectado: " + clientEP);
-                        }
-
-                        if (p1EndPoint != null && p2EndPoint != null && !gameStarted)
-                        {
-                            gameStarted = true;
-                            SendBroadcastMessage($"SCORE|{scoreP1}|{scoreP2}");
-                            LaunchBall();
-                            Debug.Log("[SERVIDOR] Ambos conectados! Partida iniciada.");
-                        }
-                    });
-                }
-            }
-            else if (message.StartsWith("MOVE:"))
-            {
-                string[] parts = message.Split(':');
-                if (parts.Length > 1 && float.TryParse(parts[1], NumberStyles.Any, CultureInfo.InvariantCulture, out float moveAmount))
-                {
-                    lock (mainThreadActions)
-                    {
-                        mainThreadActions.Enqueue(() =>
-                        {
-                            if (isGameOver || !gameStarted) return;
-
-                            if (clientEP.Equals(p1EndPoint) && p1Paddle != null)
-                            {
-                                float newY = Mathf.Clamp(p1Paddle.position.y + moveAmount * paddleSpeed * Time.deltaTime, -3.8f, 3.8f);
-                                p1Paddle.position = new Vector3(p1Paddle.position.x, newY, 0);
-                            }
-                            else if (clientEP.Equals(p2EndPoint) && p2Paddle != null)
-                            {
-                                float newY = Mathf.Clamp(p2Paddle.position.y + moveAmount * paddleSpeed * Time.deltaTime, -3.8f, 3.8f);
-                                p2Paddle.position = new Vector3(p2Paddle.position.x, newY, 0);
-                            }
-                        });
-                    }
-                }
-            }
-            else if (message.StartsWith("RESTART"))
-            {
-                lock (mainThreadActions)
-                {
-                    mainThreadActions.Enqueue(RestartGame);
-                }
+                connectedClients.Add(remoteEP);
+                int assignedID = connectedClients.Count;
+                SendToClient($"ASSIGN:{assignedID}", remoteEP);
             }
 
-            server.BeginReceive(OnDataReceived, null);
+            udpServer.BeginReceive(OnDataReceived, null);
         }
-        catch (Exception e)
+        catch (System.Exception e)
         {
-            Debug.LogWarning("[SERVIDOR] Erro na recepção: " + e.Message);
+            Debug.LogWarning("[SERVIDOR] Erro ao receber dados: " + e.Message);
         }
     }
 
-    private void CheckPaddleCollision()
+    // MÉTODO PÚBLICO: Permite que o GoalArea.cs chame esta função[cite: 3]
+    public void AddPointToPlayer(int playerNum)
     {
-        if (p1Paddle != null && ballTransform.position.x <= p1Paddle.position.x + 0.5f && ballTransform.position.x >= p1Paddle.position.x - 0.5f)
+        if (playerNum == 1)
         {
-            if (Mathf.Abs(ballTransform.position.y - p1Paddle.position.y) <= 1.5f && ballVelocity.x < 0)
-            {
-                BounceFromPaddle(p1Paddle.position.y);
-            }
+            scoreP1++;
+        }
+        else if (playerNum == 2)
+        {
+            scoreP2++;
         }
 
-        if (p2Paddle != null && ballTransform.position.x >= p2Paddle.position.x - 0.5f && ballTransform.position.x <= p2Paddle.position.x + 0.5f)
-        {
-            if (Mathf.Abs(ballTransform.position.y - p2Paddle.position.y) <= 1.5f && ballVelocity.x > 0)
-            {
-                BounceFromPaddle(p2Paddle.position.y);
-            }
-        }
-    }
+        Debug.Log($"[SERVIDOR] Golo! Placar atual: P1 {scoreP1} x {scoreP2} P2");
 
-    private void BounceFromPaddle(float paddleY)
-    {
-        float dirX = -ballVelocity.x;
-        float dirY = (ballTransform.position.y - paddleY) * 1.5f;
-
-        if (Mathf.Abs(dirY) < 0.2f)
-        {
-            dirY = UnityEngine.Random.value > 0.5f ? 0.5f : -0.5f;
-        }
-
-        ballVelocity = new Vector2(dirX, dirY).normalized * ballSpeed;
-    }
-
-    private void AddPointToPlayer(int playerNum)
-    {
-        if (playerNum == 1) scoreP1++;
-        else if (playerNum == 2) scoreP2++;
-
+        // Transmite o placar atualizado para todos os clientes
         SendBroadcastMessage($"SCORE|{scoreP1}|{scoreP2}");
-
-        if (scoreP1 >= maxScore)
-        {
-            TriggerGameOver(1);
-        }
-        else if (scoreP2 >= maxScore)
-        {
-            TriggerGameOver(2);
-        }
-        else
-        {
-            LaunchBall();
-        }
     }
 
-    private void TriggerGameOver(int winner)
-    {
-        isGameOver = true;
-        ballVelocity = Vector2.zero;
-        if (ballTransform != null) ballTransform.position = Vector3.zero;
-
-        SendBroadcastMessage($"GAME_OVER|{winner}");
-        Debug.Log($"[SERVIDOR] Fim de jogo! Jogador {winner} venceu.");
-    }
-
-    private void ResetGameToWaitingState()
-    {
-        gameStarted = false;
-        isGameOver = false;
-        ballVelocity = Vector2.zero;
-        if (ballTransform != null) ballTransform.position = Vector3.zero;
-    }
-
-    private void LaunchBall()
-    {
-        if (ballTransform != null) ballTransform.position = Vector3.zero;
-
-        float dirX = UnityEngine.Random.value > 0.5f ? 1f : -1f;
-        float dirY = UnityEngine.Random.Range(-0.5f, 0.5f);
-
-        if (Mathf.Abs(dirY) < 0.2f) dirY = 0.4f;
-
-        ballVelocity = new Vector2(dirX, dirY).normalized * ballSpeed;
-    }
-
-    private void RestartGame()
-    {
-        scoreP1 = 0;
-        scoreP2 = 0;
-        isGameOver = false;
-
-        SendBroadcastMessage($"SCORE|{scoreP1}|{scoreP2}");
-        SendBroadcastMessage("GAME_RESET");
-
-        if (p1EndPoint != null && p2EndPoint != null)
-        {
-            gameStarted = true;
-            LaunchBall();
-        }
-        else
-        {
-            ResetGameToWaitingState();
-        }
-
-        Debug.Log("[SERVIDOR] O jogo foi reiniciado!");
-    }
-
-    private void BroadcastState()
-    {
-        if (p1Paddle == null || p2Paddle == null || ballTransform == null) return;
-
-        string state = $"STATE|{p1Paddle.position.y.ToString(CultureInfo.InvariantCulture)}|{p2Paddle.position.y.ToString(CultureInfo.InvariantCulture)}|{ballTransform.position.x.ToString(CultureInfo.InvariantCulture)}|{ballTransform.position.y.ToString(CultureInfo.InvariantCulture)}";
-        SendBroadcastMessage(state);
-    }
-
-    private void SendBroadcastMessage(string msg)
-    {
-        if (p1EndPoint != null) SendDataToClient(p1EndPoint, msg);
-        if (p2EndPoint != null) SendDataToClient(p2EndPoint, msg);
-    }
-
-    private void SendDataToClient(IPEndPoint target, string msg)
+    public void SendBroadcastMessage(string msg)
     {
         byte[] data = Encoding.UTF8.GetBytes(msg);
-        server.Send(data, data.Length, target);
+        foreach (var clientEP in connectedClients)
+        {
+            udpServer.Send(data, data.Length, clientEP);
+        }
+    }
+
+    private void SendToClient(string msg, IPEndPoint clientEP)
+    {
+        byte[] data = Encoding.UTF8.GetBytes(msg);
+        udpServer.Send(data, data.Length, clientEP);
     }
 
     private void OnApplicationQuit()
     {
-        server?.Close();
+        udpServer?.Close();
     }
 }
