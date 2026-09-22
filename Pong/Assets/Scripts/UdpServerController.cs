@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Net;
@@ -16,7 +17,7 @@ public class UdpServerController : MonoBehaviour
 
     [Header("Configurações do Jogo")]
     public float paddleSpeed = 8f;
-    public float ballSpeed = 10f;
+    public float ballSpeed = 7f;
     public int maxScore = 5;
 
     private UdpClient server;
@@ -30,12 +31,23 @@ public class UdpServerController : MonoBehaviour
 
     private Vector2 ballVelocity;
 
-    // Fila para processar entradas de movimento na Main Thread
-    private readonly Queue<System.Action> mainThreadActions = new Queue<System.Action>();
+    private readonly Queue<Action> mainThreadActions = new Queue<Action>();
 
     void Start()
     {
+        // Garante que o servidor continue rodando em segundo plano
+        Application.runInBackground = true;
+
         server = new UdpClient(port);
+
+        // Previne o erro WSAECONNRESET (10054) no Windows
+        const int SIO_UDP_CONNRESET = -1744830452;
+        try
+        {
+            server.Client.IOControl((IOControlCode)SIO_UDP_CONNRESET, new byte[] { 0 }, null);
+        }
+        catch { }
+
         server.BeginReceive(OnDataReceived, null);
         Debug.Log("[SERVIDOR] Servidor iniciado na porta " + port);
 
@@ -44,7 +56,6 @@ public class UdpServerController : MonoBehaviour
 
     void Update()
     {
-        // 1. Processa ações da fila de rede na Main Thread
         lock (mainThreadActions)
         {
             while (mainThreadActions.Count > 0)
@@ -53,7 +64,6 @@ public class UdpServerController : MonoBehaviour
             }
         }
 
-        // Se ambos não conectaram ou se o jogo acabou, força a bola parada
         if (!gameStarted || isGameOver)
         {
             if (ballTransform != null) ballTransform.position = Vector3.zero;
@@ -64,7 +74,7 @@ public class UdpServerController : MonoBehaviour
         // Movimentação da bola
         ballTransform.Translate(ballVelocity * Time.deltaTime);
 
-        // Rebatida nas paredes (Eixo Y)
+        // Rebatida nas paredes superior e inferior
         if (Mathf.Abs(ballTransform.position.y) > 4.5f)
         {
             ballVelocity.y = -ballVelocity.y;
@@ -72,10 +82,10 @@ public class UdpServerController : MonoBehaviour
             ballTransform.position = new Vector3(ballTransform.position.x, clampedY, 0);
         }
 
-        // Colisão com Raquetes
+        // Colisão com as raquetes
         CheckPaddleCollision();
 
-        // Verificação de Ponto (Eixo X)
+        // Verificação de Ponto
         if (ballTransform.position.x > 9f)
         {
             AddPointToPlayer(1);
@@ -85,11 +95,10 @@ public class UdpServerController : MonoBehaviour
             AddPointToPlayer(2);
         }
 
-        // Envia o estado atualizado para os clientes
         BroadcastState();
     }
 
-    private void OnDataReceived(System.IAsyncResult result)
+    private void OnDataReceived(IAsyncResult result)
     {
         try
         {
@@ -160,7 +169,7 @@ public class UdpServerController : MonoBehaviour
 
             server.BeginReceive(OnDataReceived, null);
         }
-        catch (System.Exception e)
+        catch (Exception e)
         {
             Debug.LogWarning("[SERVIDOR] Erro na recepção: " + e.Message);
         }
@@ -192,7 +201,7 @@ public class UdpServerController : MonoBehaviour
 
         if (Mathf.Abs(dirY) < 0.2f)
         {
-            dirY = Random.value > 0.5f ? 0.5f : -0.5f;
+            dirY = UnityEngine.Random.value > 0.5f ? 0.5f : -0.5f;
         }
 
         ballVelocity = new Vector2(dirX, dirY).normalized * ballSpeed;
@@ -241,8 +250,8 @@ public class UdpServerController : MonoBehaviour
     {
         if (ballTransform != null) ballTransform.position = Vector3.zero;
 
-        float dirX = Random.value > 0.5f ? 1f : -1f;
-        float dirY = Random.Range(-0.5f, 0.5f);
+        float dirX = UnityEngine.Random.value > 0.5f ? 1f : -1f;
+        float dirY = UnityEngine.Random.Range(-0.5f, 0.5f);
 
         if (Mathf.Abs(dirY) < 0.2f) dirY = 0.4f;
 

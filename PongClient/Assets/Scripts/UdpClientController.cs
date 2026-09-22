@@ -11,19 +11,24 @@ using UnityEngine.UI;
 public class UdpClientController : MonoBehaviour
 {
     [Header("Configurações de Rede")]
-    public string serverIP = "127.0.0.1";
+    public string defaultServerIP = "127.0.0.1";
     public int serverPort = 9050;
+
+    [Header("Interface de Conexão (UI)")]
+    public TMP_InputField ipInputField;
+    public Button connectButton;
+    public GameObject connectionPanel;
 
     [Header("Objetos do Jogo na Cena")]
     public Transform p1Paddle;
     public Transform p2Paddle;
     public Transform ballTransform;
 
-    [Header("Interface de Usuário (UI)")]
-    public TMP_Text scoreTextP1;
-    public TMP_Text scoreTextP2;
+    [Header("Interface do Placar e Fim de Jogo")]
+    public TextMeshProUGUI scoreTextP1;
+    public TextMeshProUGUI scoreTextP2;
     public GameObject gameOverPanel;
-    public TMP_Text winnerText;
+    public TextMeshProUGUI winnerText;
     public Button restartButton;
 
     private UdpClient udpClient;
@@ -31,43 +36,73 @@ public class UdpClientController : MonoBehaviour
     private int playerRole = 0; // 1 = P1, 2 = P2
     private bool isConnected = false;
 
-    // Fila para executar ações com segurança na Main Thread da Unity
     private static readonly Queue<Action> mainThreadQueue = new Queue<Action>();
 
     void Start()
     {
+        // Garante execução contínua sem congelar em segundo plano
+        Application.runInBackground = true;
+
         if (gameOverPanel != null) gameOverPanel.SetActive(false);
+
+        if (ipInputField != null && string.IsNullOrEmpty(ipInputField.text))
+        {
+            ipInputField.text = defaultServerIP;
+        }
+
+        if (connectButton != null)
+        {
+            connectButton.onClick.AddListener(OnConnectButtonClicked);
+        }
 
         if (restartButton != null)
         {
             restartButton.onClick.AddListener(SendRestartRequest);
         }
-
-        ConnectToServer();
     }
 
-    public void ConnectToServer()
+    public void OnConnectButtonClicked()
     {
-        CloseSocket(); // Limpa conexões anteriores se existirem
+        string targetIP = defaultServerIP;
 
-        if (!IPAddress.TryParse(serverIP, out IPAddress parsedAddress))
+        if (ipInputField != null && !string.IsNullOrWhiteSpace(ipInputField.text))
         {
-            Debug.LogError($"[CLIENTE] Endereço IP inválido: {serverIP}");
+            targetIP = ipInputField.text.Trim();
+        }
+
+        ConnectToServer(targetIP);
+    }
+
+    private void ConnectToServer(string ipAddressStr)
+    {
+        CloseSocket();
+
+        if (!IPAddress.TryParse(ipAddressStr, out IPAddress parsedAddress))
+        {
+            Debug.LogError($"[CLIENTE] Endereço IP inválido: {ipAddressStr}");
             return;
         }
 
         try
         {
             udpClient = new UdpClient();
+
+            // Previne o erro WSAECONNRESET (10054)
+            const int SIO_UDP_CONNRESET = -1744830452;
+            try
+            {
+                udpClient.Client.IOControl((IOControlCode)SIO_UDP_CONNRESET, new byte[] { 0 }, null);
+            }
+            catch { }
+
             serverEP = new IPEndPoint(parsedAddress, serverPort);
 
-            // Envia o pedido de conexão para o Servidor
             byte[] data = Encoding.UTF8.GetBytes("CONNECT");
             udpClient.Send(data, data.Length, serverEP);
 
             udpClient.BeginReceive(OnDataReceived, null);
             isConnected = true;
-            Debug.Log($"[CLIENTE] Conectado ao servidor em {serverIP}:{serverPort}");
+            Debug.Log($"[CLIENTE] Solicitando conexão ao servidor em {ipAddressStr}:{serverPort}...");
         }
         catch (Exception e)
         {
@@ -77,7 +112,6 @@ public class UdpClientController : MonoBehaviour
 
     void Update()
     {
-        // Processa ações acumuladas que precisam de rodar na Main Thread
         lock (mainThreadQueue)
         {
             while (mainThreadQueue.Count > 0)
@@ -88,7 +122,6 @@ public class UdpClientController : MonoBehaviour
 
         if (!isConnected || playerRole == 0) return;
 
-        // Captura movimento do jogador (Setas Cima/Baixo ou W/S)
         float moveInput = Input.GetAxisRaw("Vertical");
 
         if (moveInput != 0)
@@ -116,7 +149,6 @@ public class UdpClientController : MonoBehaviour
             byte[] data = udpClient.EndReceive(result, ref ep);
             string message = Encoding.UTF8.GetString(data).Trim();
 
-            // Atribuição de número do Jogador (ASSIGN:1 ou ASSIGN:2)
             if (message.StartsWith("ASSIGN:"))
             {
                 if (int.TryParse(message.Split(':')[1], out int assignedId))
@@ -125,20 +157,22 @@ public class UdpClientController : MonoBehaviour
                     {
                         playerRole = assignedId;
                         Debug.Log($"[CLIENTE] Atribuído como Jogador {playerRole}");
+
+                        if (connectionPanel != null)
+                        {
+                            connectionPanel.SetActive(false);
+                        }
                     });
                 }
             }
-            // Estado de posições (STATE|p1Y|p2Y|ballX|ballY)
             else if (message.StartsWith("STATE|"))
             {
                 ParseState(message);
             }
-            // Placar do jogo (SCORE|p1Score|p2Score)
             else if (message.StartsWith("SCORE|"))
             {
                 ParseScore(message);
             }
-            // Fim de jogo (GAME_OVER|winner)
             else if (message.StartsWith("GAME_OVER|"))
             {
                 if (int.TryParse(message.Split('|')[1], out int winner))
@@ -146,18 +180,15 @@ public class UdpClientController : MonoBehaviour
                     EnqueueMainThread(() => ShowGameOver(winner));
                 }
             }
-            // Reinício de partida
             else if (message == "GAME_RESET")
             {
                 EnqueueMainThread(HideGameOver);
             }
 
-            // Continua a escutar a rede
             udpClient.BeginReceive(OnDataReceived, null);
         }
         catch (ObjectDisposedException)
         {
-            // Exceção normal disparada ao fechar o jogo ou socket
         }
         catch (Exception e)
         {
