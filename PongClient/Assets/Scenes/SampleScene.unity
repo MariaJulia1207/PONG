@@ -2858,16 +2858,19 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 333deac97da2e5b4ab8ea927fa598d7c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::UdpClientController
-  serverIP: 127.0.0.1
+  defaultServerIP: 127.0.0.1
   serverPort: 9050
+  ipInputField: {fileID: 1371324621}
+  connectButton: {fileID: 37840636}
+  connectionPanel: {fileID: 738629053}
   p1Paddle: {fileID: 798059929}
   p2Paddle: {fileID: 2061258930}
   ballTransform: {fileID: 450225152}
   scoreTextP1: {fileID: 0}
   scoreTextP2: {fileID: 0}
   gameOverPanel: {fileID: 1150282567}
-  winnerText: {fileID: 0}
-  restartButton: {fileID: 0}
+  winnerText: {fileID: 1259845908}
+  restartButton: {fileID: 1611426367}
 --- !u!1 &1182326314
 GameObject:
   m_ObjectHideFlags: 0

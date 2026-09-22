@@ -2006,8 +2006,8 @@ MonoBehaviour:
   p1Paddle: {fileID: 798059929}
   p2Paddle: {fileID: 2061258930}
   ballTransform: {fileID: 450225152}
-  paddleSpeed: 8
-  ballSpeed: 12
+  paddleSpeed: 6
+  ballSpeed: 10
   maxScore: 5
 --- !u!4 &1152097196
 Transform:
