@@ -7,7 +7,12 @@ public class Ball : MonoBehaviour
 
     void Start()
     {
-        LaunchBall();
+        if (rb == null) rb = GetComponent<Rigidbody2D>();
+
+        // CORREÇÃO: Garante que a bola fique parada no início
+        // Ela só vai se mover quando o UdpServerController chamar LaunchBall()
+        rb.linearVelocity = Vector2.zero;
+        rb.angularVelocity = 0f;
     }
 
     public void LaunchBall()

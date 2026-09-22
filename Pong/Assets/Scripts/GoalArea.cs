@@ -40,7 +40,7 @@ public class GoalArea : MonoBehaviour
             serverController?.AddPointToPlayer(1);
         }
 
-        // Reposiciona a bola e lança novamente
+        // Reposiciona a bola no centro e a relança através do servidor/física
         other.transform.position = ballStartPosition;
         ball.LaunchBall();
     }

@@ -36,7 +36,6 @@ public class UdpClientController : MonoBehaviour
     private int playerRole = 0; // 1 = P1, 2 = P2
     private bool isConnected = false;
 
-    // Fila para executar ações na Main Thread da Unity
     private static readonly Queue<Action> mainThreadQueue = new Queue<Action>();
 
     void Start()
@@ -88,7 +87,6 @@ public class UdpClientController : MonoBehaviour
         {
             udpClient = new UdpClient();
 
-            // Previne falha de fechamento de conexão UDP silenciosa no Windows
             const int SIO_UDP_CONNRESET = -1744830452;
             try
             {
@@ -98,7 +96,6 @@ public class UdpClientController : MonoBehaviour
 
             serverEP = new IPEndPoint(parsedAddress, serverPort);
 
-            // Envia pacote de conexão para o Servidor
             byte[] data = Encoding.UTF8.GetBytes("CONNECT");
             udpClient.Send(data, data.Length, serverEP);
 
@@ -114,7 +111,6 @@ public class UdpClientController : MonoBehaviour
 
     void Update()
     {
-        // Descarrega as ações pendentes na Thread Principal da Unity
         lock (mainThreadQueue)
         {
             while (mainThreadQueue.Count > 0)
@@ -125,10 +121,19 @@ public class UdpClientController : MonoBehaviour
 
         if (!isConnected || playerRole == 0) return;
 
-        // Captura entrada do jogador e envia para o servidor
-        float moveInput = Input.GetAxisRaw("Vertical");
+        // Captura o input contínuo do jogador (W/S ou Setas para cima/baixo)
+        float moveInput = 0f;
+        if (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.UpArrow))
+        {
+            moveInput = 1f;
+        }
+        else if (Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.DownArrow))
+        {
+            moveInput = -1f;
+        }
 
-        if (moveInput != 0)
+        // Se houver comando de movimento ativo, envia para o servidor
+        if (moveInput != 0f)
         {
             string msg = $"MOVE:{moveInput.ToString(CultureInfo.InvariantCulture)}";
             byte[] data = Encoding.UTF8.GetBytes(msg);
@@ -189,13 +194,9 @@ public class UdpClientController : MonoBehaviour
                 EnqueueMainThread(HideGameOver);
             }
 
-            // Mantém o escutador UDP ativo
             udpClient.BeginReceive(OnDataReceived, null);
         }
-        catch (ObjectDisposedException)
-        {
-            // Socket foi fechado normalmente
-        }
+        catch (ObjectDisposedException) { }
         catch (Exception e)
         {
             Debug.LogWarning("[CLIENTE] Erro na recepção UDP: " + e.Message);
@@ -231,15 +232,8 @@ public class UdpClientController : MonoBehaviour
 
         EnqueueMainThread(() =>
         {
-            if (scoreTextP1 != null) 
-            {
-                scoreTextP1.text = s1;
-            }
-
-            if (scoreTextP2 != null) 
-            {
-                scoreTextP2.text = s2;
-            }
+            if (scoreTextP1 != null) scoreTextP1.text = s1;
+            if (scoreTextP2 != null) scoreTextP2.text = s2;
         });
     }
 
