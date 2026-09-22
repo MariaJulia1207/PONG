@@ -35,12 +35,10 @@ public class UdpServerController : MonoBehaviour
 
     void Start()
     {
-        // Garante que o servidor continue rodando em segundo plano
         Application.runInBackground = true;
 
         server = new UdpClient(port);
 
-        // Previne o erro WSAECONNRESET (10054) no Windows
         const int SIO_UDP_CONNRESET = -1744830452;
         try
         {
@@ -116,18 +114,21 @@ public class UdpServerController : MonoBehaviour
                         {
                             p1EndPoint = clientEP;
                             SendDataToClient(p1EndPoint, "ASSIGN:1");
+                            SendDataToClient(p1EndPoint, $"SCORE|{scoreP1}|{scoreP2}");
                             Debug.Log("[SERVIDOR] Jogador 1 conectado: " + clientEP);
                         }
                         else if (p2EndPoint == null && !clientEP.Equals(p1EndPoint))
                         {
                             p2EndPoint = clientEP;
                             SendDataToClient(p2EndPoint, "ASSIGN:2");
+                            SendDataToClient(p2EndPoint, $"SCORE|{scoreP1}|{scoreP2}");
                             Debug.Log("[SERVIDOR] Jogador 2 conectado: " + clientEP);
                         }
 
                         if (p1EndPoint != null && p2EndPoint != null && !gameStarted)
                         {
                             gameStarted = true;
+                            SendBroadcastMessage($"SCORE|{scoreP1}|{scoreP2}");
                             LaunchBall();
                             Debug.Log("[SERVIDOR] Ambos conectados! Partida iniciada.");
                         }

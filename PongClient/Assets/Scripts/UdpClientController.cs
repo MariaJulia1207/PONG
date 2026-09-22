@@ -40,7 +40,6 @@ public class UdpClientController : MonoBehaviour
 
     void Start()
     {
-        // Garante execução contínua sem congelar em segundo plano
         Application.runInBackground = true;
 
         if (gameOverPanel != null) gameOverPanel.SetActive(false);
@@ -87,7 +86,6 @@ public class UdpClientController : MonoBehaviour
         {
             udpClient = new UdpClient();
 
-            // Previne o erro WSAECONNRESET (10054)
             const int SIO_UDP_CONNRESET = -1744830452;
             try
             {
@@ -225,8 +223,17 @@ public class UdpClientController : MonoBehaviour
 
         EnqueueMainThread(() =>
         {
-            if (scoreTextP1 != null) scoreTextP1.text = s1;
-            if (scoreTextP2 != null) scoreTextP2.text = s2;
+            if (scoreTextP1 != null) 
+            {
+                scoreTextP1.text = s1;
+                scoreTextP1.SetAllDirty();
+            }
+
+            if (scoreTextP2 != null) 
+            {
+                scoreTextP2.text = s2;
+                scoreTextP2.SetAllDirty();
+            }
         });
     }
 
