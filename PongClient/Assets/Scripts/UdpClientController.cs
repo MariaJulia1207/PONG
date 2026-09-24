@@ -36,8 +36,7 @@ public class UdpClientController : MonoBehaviour
     private int playerRole = 0; // 1 = P1, 2 = P2
     private bool isConnected = false;
 
-    // Controle de taxa de envio de movimento (Evita FLOOD no servidor)
-    private float moveSendRate = 0.05f; // 20 envios por segundo
+    private float moveSendRate = 0.05f; // Max 20 pacotes/seg de input
     private float nextMoveSendTime = 0f;
 
     private static readonly Queue<Action> mainThreadQueue = new Queue<Action>();
@@ -115,7 +114,6 @@ public class UdpClientController : MonoBehaviour
 
     void Update()
     {
-        // Desempilha e executa ações na Main Thread
         lock (mainThreadQueue)
         {
             while (mainThreadQueue.Count > 0)
@@ -126,7 +124,6 @@ public class UdpClientController : MonoBehaviour
 
         if (!isConnected || playerRole == 0) return;
 
-        // Captura de input contínuo
         float moveInput = 0f;
         if (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.UpArrow))
         {
@@ -137,7 +134,6 @@ public class UdpClientController : MonoBehaviour
             moveInput = -1f;
         }
 
-        // Envia comando de movimento com controle de frequência (evita sobrecarregar o socket)
         if (moveInput != 0f && Time.time >= nextMoveSendTime)
         {
             nextMoveSendTime = Time.time + moveSendRate;
@@ -214,7 +210,6 @@ public class UdpClientController : MonoBehaviour
         string[] parts = message.Split('|');
         if (parts.Length < 5) return;
 
-        // Troca vírgula por ponto por garantia contra variações do Windows
         string s1 = parts[1].Replace(',', '.');
         string s2 = parts[2].Replace(',', '.');
         string s3 = parts[3].Replace(',', '.');

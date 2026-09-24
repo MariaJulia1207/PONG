@@ -30,7 +30,7 @@ public class UdpServerController : MonoBehaviour
     private bool isGameOver = false;
 
     // Frequência fixa de envio de posições (60Hz)
-    private float stateSendRate = 0.016f; 
+    private float stateSendRate = 0.016f;
     private float nextSendTime = 0f;
 
     private static readonly Queue<Action> mainThreadQueue = new Queue<Action>();
@@ -66,7 +66,7 @@ public class UdpServerController : MonoBehaviour
 
     private void Update()
     {
-        // 1. Processa ações pendentes na MainThread da Unity
+        // 1. Processa ações pendentes na Main Thread da Unity
         lock (mainThreadQueue)
         {
             while (mainThreadQueue.Count > 0)
@@ -75,8 +75,7 @@ public class UdpServerController : MonoBehaviour
             }
         }
 
-        // 2. GARANTIA: Envia a posição das raquetes e da bola se houver pelo menos 1 cliente conectado
-        // (Impede que a tela do cliente fique congelada enquanto aguarda o início do jogo)
+        // 2. Envia posições SEMPRE que houver ao menos 1 cliente (impede congelamento)
         if (connectedClients.Count > 0 && Time.time >= nextSendTime)
         {
             nextSendTime = Time.time + stateSendRate;
@@ -134,7 +133,7 @@ public class UdpServerController : MonoBehaviour
             SendToClient($"ASSIGN:{assignedID}", remoteEP);
             Debug.Log($"[SERVIDOR] Jogador {assignedID} conectado de {remoteEP}");
 
-            // Quando o segundo jogador conecta, inicia a bola!
+            // Inicia a partida e lança a bola quando o 2º cliente conectar
             if (connectedClients.Count == 2 && !gameStarted)
             {
                 gameStarted = true;
@@ -192,7 +191,6 @@ public class UdpServerController : MonoBehaviour
         paddle.position = new Vector3(paddle.position.x, newY, paddle.position.z);
     }
 
-    // Método chamado pelos gatilhos de Gol
     public void AddPointToPlayer(int playerNum)
     {
         if (isGameOver) return;
@@ -202,7 +200,7 @@ public class UdpServerController : MonoBehaviour
 
         Debug.Log($"[SERVIDOR] Gol! Placar: P1 {scoreP1} x {scoreP2} P2");
 
-        // Envia o placar atualizado imediatamente
+        // Transmite o novo placar aos clientes
         SendBroadcastMessage($"SCORE|{scoreP1}|{scoreP2}");
 
         if (scoreP1 >= maxScore)
@@ -212,15 +210,6 @@ public class UdpServerController : MonoBehaviour
         else if (scoreP2 >= maxScore)
         {
             EndGame(2);
-        }
-        else
-        {
-            // Relaça a bola no centro para o próximo ponto
-            if (ballScript != null)
-            {
-                ballScript.transform.position = Vector3.zero;
-                ballScript.LaunchBall();
-            }
         }
     }
 
@@ -242,6 +231,12 @@ public class UdpServerController : MonoBehaviour
 
         if (ballScript != null)
         {
+            Rigidbody2D ballRb = ballScript.GetComponent<Rigidbody2D>();
+            if (ballRb != null)
+            {
+                ballRb.linearVelocity = Vector2.zero;
+                ballRb.angularVelocity = 0f;
+            }
             ballScript.transform.position = Vector3.zero;
             ballScript.LaunchBall();
         }

@@ -3,30 +3,22 @@ using UnityEngine;
 public class GoalArea : MonoBehaviour
 {
     [Header("Configuração da Baliza")]
-    [SerializeField] private int goalOwner; // 1 = Baliza do P1 (ponto para P2) | 2 = Baliza do P2 (ponto para P1)
-    
-    [SerializeField] private UdpServerController serverController;
+    [Tooltip("1 = Baliza do P1 (Golo do P2) | 2 = Baliza do P2 (Golo do P1)")]
+    [SerializeField] private int goalOwner = 1;
 
-    private Vector3 ballStartPosition = Vector3.zero;
+    [SerializeField] private UdpServerController serverController;
 
     private void Start()
     {
-        // Procura o servidor na cena se não tiver sido atribuído no Inspector
         if (serverController == null)
         {
             serverController = FindAnyObjectByType<UdpServerController>();
-        }
-
-        // Guarda a posição inicial da bola para repor
-        Ball b = FindAnyObjectByType<Ball>();
-        if (b != null)
-        {
-            ballStartPosition = b.transform.position;
         }
     }
 
     private void OnTriggerEnter2D(Collider2D other)
     {
+        // Garante que apenas o objeto com o script Ball ou Tag "Ball" ativa o gol
         Ball ball = other.GetComponent<Ball>();
         if (ball == null) return;
 
@@ -40,8 +32,16 @@ public class GoalArea : MonoBehaviour
             serverController?.AddPointToPlayer(1);
         }
 
-        // Reposiciona a bola no centro e a relança através do servidor/física
-        other.transform.position = ballStartPosition;
+        // Zera a física da bola e reseta para o centro (0,0)
+        Rigidbody2D ballRb = ball.GetComponent<Rigidbody2D>();
+        if (ballRb != null)
+        {
+            ballRb.linearVelocity = Vector2.zero;
+            ballRb.angularVelocity = 0f;
+        }
+        ball.transform.position = Vector3.zero;
+
+        // Relança a bola
         ball.LaunchBall();
     }
 }
