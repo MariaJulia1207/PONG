@@ -11,7 +11,7 @@ public class UdpServerController : MonoBehaviour
     [Header("Configurações do Servidor")]
     public int listenPort = 9050;
     public int maxScore = 5;
-    public float paddleSpeed = 10f;
+    public float paddleSpeed = 0.25f; // Distância por comando de movimento recebido
     public float paddleMinY = -3.8f;
     public float paddleMaxY = 3.8f;
 
@@ -62,6 +62,7 @@ public class UdpServerController : MonoBehaviour
 
     private void Update()
     {
+        // Executa eventos pendentes da fila da rede
         lock (mainThreadQueue)
         {
             while (mainThreadQueue.Count > 0)
@@ -147,20 +148,11 @@ public class UdpServerController : MonoBehaviour
         Transform paddle = (playerId == 1) ? p1Paddle : p2Paddle;
         if (paddle == null) return;
 
-        // Move a posição calculando com o delta do servidor e limita dentro do campo
-        Vector3 newPos = paddle.position + Vector3.up * dir * paddleSpeed * Time.deltaTime;
-        newPos.y = Mathf.Clamp(newPos.y, paddleMinY, paddleMaxY);
+        // Movimento direto sem Time.deltaTime (evita zerar o movimento na fila de eventos)
+        float newY = paddle.position.y + (dir * paddleSpeed);
+        newY = Mathf.Clamp(newY, paddleMinY, paddleMaxY);
 
-        // Se a raquete usar Rigidbody2D Kinematic, atualiza via MovePosition para sincronização de física
-        Rigidbody2D rb = paddle.GetComponent<Rigidbody2D>();
-        if (rb != null)
-        {
-            rb.MovePosition(newPos);
-        }
-        else
-        {
-            paddle.position = newPos;
-        }
+        paddle.position = new Vector3(paddle.position.x, newY, paddle.position.z);
     }
 
     public void AddPointToPlayer(int playerNum)
@@ -211,15 +203,13 @@ public class UdpServerController : MonoBehaviour
     {
         if (p1Paddle == null || p2Paddle == null || ballTransform == null) return;
 
-        string stateMsg = string.Format(
-            CultureInfo.InvariantCulture,
-            "STATE|{0:F2}|{1:F2}|{2:F2}|{3:F2}",
-            p1Paddle.position.y,
-            p2Paddle.position.y,
-            ballTransform.position.x,
-            ballTransform.position.y
-        );
+        // Garante que o ponto decimal seja formatado de forma limpa
+        string p1Y = p1Paddle.position.y.ToString("F2", CultureInfo.InvariantCulture);
+        string p2Y = p2Paddle.position.y.ToString("F2", CultureInfo.InvariantCulture);
+        string bX = ballTransform.position.x.ToString("F2", CultureInfo.InvariantCulture);
+        string bY = ballTransform.position.y.ToString("F2", CultureInfo.InvariantCulture);
 
+        string stateMsg = $"STATE|{p1Y}|{p2Y}|{bX}|{bY}";
         SendBroadcastMessage(stateMsg);
     }
 
