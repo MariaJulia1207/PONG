@@ -11,7 +11,7 @@ public class UdpServerController : MonoBehaviour
     [Header("Configurações do Servidor")]
     public int listenPort = 9050;
     public int maxScore = 5;
-    public float paddleSpeed = 0.25f; // Distância por comando de movimento recebido
+    public float paddleSpeed = 0.3f;
     public float paddleMinY = -3.8f;
     public float paddleMaxY = 3.8f;
 
@@ -28,6 +28,10 @@ public class UdpServerController : MonoBehaviour
     private int scoreP2 = 0;
     private bool gameStarted = false;
     private bool isGameOver = false;
+
+    // Frequência fixa de envio de posições (60Hz)
+    private float stateSendRate = 0.016f; 
+    private float nextSendTime = 0f;
 
     private static readonly Queue<Action> mainThreadQueue = new Queue<Action>();
 
@@ -52,7 +56,7 @@ public class UdpServerController : MonoBehaviour
             catch { }
 
             udpServer.BeginReceive(OnDataReceived, null);
-            Debug.Log($"[SERVIDOR] Servidor rodando na porta {listenPort}. Aguardando 2 jogadores...");
+            Debug.Log($"[SERVIDOR] Servidor rodando na porta {listenPort}. Aguardando jogadores...");
         }
         catch (Exception e)
         {
@@ -62,7 +66,7 @@ public class UdpServerController : MonoBehaviour
 
     private void Update()
     {
-        // Executa eventos pendentes da fila da rede
+        // 1. Processa ações pendentes na MainThread da Unity
         lock (mainThreadQueue)
         {
             while (mainThreadQueue.Count > 0)
@@ -71,9 +75,13 @@ public class UdpServerController : MonoBehaviour
             }
         }
 
-        if (!gameStarted || isGameOver) return;
-
-        SendStateToClients();
+        // 2. GARANTIA: Envia a posição das raquetes e da bola se houver pelo menos 1 cliente conectado
+        // (Impede que a tela do cliente fique congelada enquanto aguarda o início do jogo)
+        if (connectedClients.Count > 0 && Time.time >= nextSendTime)
+        {
+            nextSendTime = Time.time + stateSendRate;
+            SendStateToClients();
+        }
     }
 
     private void OnDataReceived(IAsyncResult result)
@@ -92,7 +100,9 @@ public class UdpServerController : MonoBehaviour
             }
             else if (message.StartsWith("MOVE:"))
             {
-                int playerIndex = connectedClients.IndexOf(remoteEP);
+                UpdateClientEndpoint(remoteEP);
+
+                int playerIndex = GetPlayerIndex(remoteEP);
                 if (playerIndex != -1 && float.TryParse(message.Split(':')[1], NumberStyles.Any, CultureInfo.InvariantCulture, out float moveDir))
                 {
                     EnqueueMainThread(() => MovePlayer(playerIndex + 1, moveDir));
@@ -114,7 +124,9 @@ public class UdpServerController : MonoBehaviour
 
     private void HandleConnection(IPEndPoint remoteEP)
     {
-        if (!connectedClients.Contains(remoteEP) && connectedClients.Count < 2)
+        int existingIndex = GetPlayerIndex(remoteEP);
+
+        if (existingIndex == -1 && connectedClients.Count < 2)
         {
             connectedClients.Add(remoteEP);
             int assignedID = connectedClients.Count;
@@ -122,10 +134,12 @@ public class UdpServerController : MonoBehaviour
             SendToClient($"ASSIGN:{assignedID}", remoteEP);
             Debug.Log($"[SERVIDOR] Jogador {assignedID} conectado de {remoteEP}");
 
+            // Quando o segundo jogador conecta, inicia a bola!
             if (connectedClients.Count == 2 && !gameStarted)
             {
                 gameStarted = true;
-                Debug.Log("[SERVIDOR] Ambos os jogadores conectados! Iniciando partida...");
+                isGameOver = false;
+                Debug.Log("[SERVIDOR] Ambos os jogadores conectados! Lançando a bola...");
 
                 EnqueueMainThread(() =>
                 {
@@ -136,11 +150,35 @@ public class UdpServerController : MonoBehaviour
                 });
             }
         }
-        else if (connectedClients.Contains(remoteEP))
+        else if (existingIndex != -1)
         {
-            int existingID = connectedClients.IndexOf(remoteEP) + 1;
-            SendToClient($"ASSIGN:{existingID}", remoteEP);
+            connectedClients[existingIndex] = remoteEP;
+            SendToClient($"ASSIGN:{existingIndex + 1}", remoteEP);
         }
+    }
+
+    private void UpdateClientEndpoint(IPEndPoint remoteEP)
+    {
+        for (int i = 0; i < connectedClients.Count; i++)
+        {
+            if (connectedClients[i].Address.Equals(remoteEP.Address) && connectedClients[i].Port != remoteEP.Port)
+            {
+                connectedClients[i] = remoteEP;
+                break;
+            }
+        }
+    }
+
+    private int GetPlayerIndex(IPEndPoint remoteEP)
+    {
+        for (int i = 0; i < connectedClients.Count; i++)
+        {
+            if (connectedClients[i].Address.Equals(remoteEP.Address))
+            {
+                return i;
+            }
+        }
+        return -1;
     }
 
     private void MovePlayer(int playerId, float dir)
@@ -148,13 +186,13 @@ public class UdpServerController : MonoBehaviour
         Transform paddle = (playerId == 1) ? p1Paddle : p2Paddle;
         if (paddle == null) return;
 
-        // Movimento direto sem Time.deltaTime (evita zerar o movimento na fila de eventos)
         float newY = paddle.position.y + (dir * paddleSpeed);
         newY = Mathf.Clamp(newY, paddleMinY, paddleMaxY);
 
         paddle.position = new Vector3(paddle.position.x, newY, paddle.position.z);
     }
 
+    // Método chamado pelos gatilhos de Gol
     public void AddPointToPlayer(int playerNum)
     {
         if (isGameOver) return;
@@ -164,6 +202,7 @@ public class UdpServerController : MonoBehaviour
 
         Debug.Log($"[SERVIDOR] Gol! Placar: P1 {scoreP1} x {scoreP2} P2");
 
+        // Envia o placar atualizado imediatamente
         SendBroadcastMessage($"SCORE|{scoreP1}|{scoreP2}");
 
         if (scoreP1 >= maxScore)
@@ -173,6 +212,15 @@ public class UdpServerController : MonoBehaviour
         else if (scoreP2 >= maxScore)
         {
             EndGame(2);
+        }
+        else
+        {
+            // Relaça a bola no centro para o próximo ponto
+            if (ballScript != null)
+            {
+                ballScript.transform.position = Vector3.zero;
+                ballScript.LaunchBall();
+            }
         }
     }
 
@@ -203,7 +251,6 @@ public class UdpServerController : MonoBehaviour
     {
         if (p1Paddle == null || p2Paddle == null || ballTransform == null) return;
 
-        // Garante que o ponto decimal seja formatado de forma limpa
         string p1Y = p1Paddle.position.y.ToString("F2", CultureInfo.InvariantCulture);
         string p2Y = p2Paddle.position.y.ToString("F2", CultureInfo.InvariantCulture);
         string bX = ballTransform.position.x.ToString("F2", CultureInfo.InvariantCulture);
@@ -216,9 +263,9 @@ public class UdpServerController : MonoBehaviour
     public void SendBroadcastMessage(string msg)
     {
         byte[] data = Encoding.UTF8.GetBytes(msg);
-        foreach (var clientEP in connectedClients)
+        for (int i = 0; i < connectedClients.Count; i++)
         {
-            udpServer?.Send(data, data.Length, clientEP);
+            udpServer?.Send(data, data.Length, connectedClients[i]);
         }
     }
 
