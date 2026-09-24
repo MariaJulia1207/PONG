@@ -36,6 +36,10 @@ public class UdpClientController : MonoBehaviour
     private int playerRole = 0; // 1 = P1, 2 = P2
     private bool isConnected = false;
 
+    // Controle de taxa de envio de movimento (Evita FLOOD no servidor)
+    private float moveSendRate = 0.05f; // 20 envios por segundo
+    private float nextMoveSendTime = 0f;
+
     private static readonly Queue<Action> mainThreadQueue = new Queue<Action>();
 
     void Start()
@@ -111,6 +115,7 @@ public class UdpClientController : MonoBehaviour
 
     void Update()
     {
+        // Desempilha e executa ações na Main Thread
         lock (mainThreadQueue)
         {
             while (mainThreadQueue.Count > 0)
@@ -121,7 +126,7 @@ public class UdpClientController : MonoBehaviour
 
         if (!isConnected || playerRole == 0) return;
 
-        // Captura o input contínuo do jogador (W/S ou Setas para cima/baixo)
+        // Captura de input contínuo
         float moveInput = 0f;
         if (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.UpArrow))
         {
@@ -132,9 +137,10 @@ public class UdpClientController : MonoBehaviour
             moveInput = -1f;
         }
 
-        // Se houver comando de movimento ativo, envia para o servidor
-        if (moveInput != 0f)
+        // Envia comando de movimento com controle de frequência (evita sobrecarregar o socket)
+        if (moveInput != 0f && Time.time >= nextMoveSendTime)
         {
+            nextMoveSendTime = Time.time + moveSendRate;
             string msg = $"MOVE:{moveInput.ToString(CultureInfo.InvariantCulture)}";
             byte[] data = Encoding.UTF8.GetBytes(msg);
             try
@@ -208,16 +214,22 @@ public class UdpClientController : MonoBehaviour
         string[] parts = message.Split('|');
         if (parts.Length < 5) return;
 
-        if (float.TryParse(parts[1], NumberStyles.Any, CultureInfo.InvariantCulture, out float p1Y) &&
-            float.TryParse(parts[2], NumberStyles.Any, CultureInfo.InvariantCulture, out float p2Y) &&
-            float.TryParse(parts[3], NumberStyles.Any, CultureInfo.InvariantCulture, out float ballX) &&
-            float.TryParse(parts[4], NumberStyles.Any, CultureInfo.InvariantCulture, out float ballY))
+        // Troca vírgula por ponto por garantia contra variações do Windows
+        string s1 = parts[1].Replace(',', '.');
+        string s2 = parts[2].Replace(',', '.');
+        string s3 = parts[3].Replace(',', '.');
+        string s4 = parts[4].Replace(',', '.');
+
+        if (float.TryParse(s1, NumberStyles.Any, CultureInfo.InvariantCulture, out float p1Y) &&
+            float.TryParse(s2, NumberStyles.Any, CultureInfo.InvariantCulture, out float p2Y) &&
+            float.TryParse(s3, NumberStyles.Any, CultureInfo.InvariantCulture, out float ballX) &&
+            float.TryParse(s4, NumberStyles.Any, CultureInfo.InvariantCulture, out float ballY))
         {
             EnqueueMainThread(() =>
             {
-                if (p1Paddle != null) p1Paddle.position = new Vector3(p1Paddle.position.x, p1Y, 0);
-                if (p2Paddle != null) p2Paddle.position = new Vector3(p2Paddle.position.x, p2Y, 0);
-                if (ballTransform != null) ballTransform.position = new Vector3(ballX, ballY, 0);
+                if (p1Paddle != null) p1Paddle.position = new Vector3(p1Paddle.position.x, p1Y, p1Paddle.position.z);
+                if (p2Paddle != null) p2Paddle.position = new Vector3(p2Paddle.position.x, p2Y, p2Paddle.position.z);
+                if (ballTransform != null) ballTransform.position = new Vector3(ballX, ballY, ballTransform.position.z);
             });
         }
     }
