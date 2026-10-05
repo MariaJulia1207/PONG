@@ -140,7 +140,18 @@ public class UdpServerController : MonoBehaviour
             int assignedID = connectedClients.Count;
 
             SendToClient($"ASSIGN:{assignedID}", remoteEP);
-            Debug.Log($"[SERVIDOR] Jogador {assignedID} conectado de {remoteEP}");
+
+            // Mapeia o jogador para sua cor e posição para exibição detalhada no console
+            string playerInfo = assignedID switch
+            {
+                1 => "Jogador 1 (Verde - Esquerda)",
+                2 => "Jogador 2 (Amarelo - Topo)",
+                3 => "Jogador 3 (Vermelho - Direita)",
+                4 => "Jogador 4 (Azul - Baixo)",
+                _ => $"Jogador {assignedID}"
+            };
+
+            Debug.Log($"[SERVIDOR] {playerInfo} conectado de {remoteEP}");
 
             // Inicia a partida e lança a bola quando os 4 jogadores se conectarem
             if (connectedClients.Count == 4 && !gameStarted)
