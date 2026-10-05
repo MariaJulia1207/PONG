@@ -1892,7 +1892,7 @@ GameObject:
   - component: {fileID: 603072631}
   - component: {fileID: 603072630}
   m_Layer: 0
-  m_Name: GoalAreaEquipe2.1 (1)
+  m_Name: GoalAreaEquipe2.2
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -3544,7 +3544,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 9, y: -1.3300171}
+  m_AnchoredPosition: {x: -9, y: -1.3300171}
   m_SizeDelta: {x: -515.38, y: -219.8}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1150282569
@@ -3635,7 +3635,9 @@ MonoBehaviour:
   connectButton: {fileID: 37840636}
   connectionPanel: {fileID: 738629053}
   p1Paddle: {fileID: 798059929}
-  p2Paddle: {fileID: 2061258930}
+  p2Paddle: {fileID: 225237704}
+  p3Paddle: {fileID: 2061258930}
+  p4Paddle: {fileID: 1758254104}
   ballTransform: {fileID: 450225152}
   scoreTextP1: {fileID: 2058517682}
   scoreTextP2: {fileID: 2066852115}
@@ -6330,7 +6332,7 @@ GameObject:
   - component: {fileID: 1829701410}
   - component: {fileID: 1829701409}
   m_Layer: 0
-  m_Name: GoalAreaEquipe2.1 (2)
+  m_Name: GoalAreaEquipe2.3
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

@@ -19,9 +19,11 @@ public class UdpClientController : MonoBehaviour
     public Button connectButton;
     public GameObject connectionPanel;
 
-    [Header("Objetos do Jogo na Cena")]
-    public Transform p1Paddle;
-    public Transform p2Paddle;
+    [Header("Objetos do Jogo na Cena (4 Jogadores + Bola)")]
+    public Transform p1Paddle; // Eq 1 - J1 (Esquerda - Vertical)
+    public Transform p2Paddle; // Eq 1 - J2 (Topo - Horizontal)
+    public Transform p3Paddle; // Eq 2 - J3 (Direita - Vertical)
+    public Transform p4Paddle; // Eq 2 - J4 (Baixo - Horizontal)
     public Transform ballTransform;
 
     [Header("Interface do Placar e Fim de Jogo")]
@@ -33,7 +35,7 @@ public class UdpClientController : MonoBehaviour
 
     private UdpClient udpClient;
     private IPEndPoint serverEP;
-    private int playerRole = 0; // 1 = P1, 2 = P2
+    private int playerRole = 0; // 1 = J1, 2 = J2, 3 = J3, 4 = J4
     private bool isConnected = false;
 
     private float moveSendRate = 0.05f; // Max 20 pacotes/seg de input
@@ -125,13 +127,31 @@ public class UdpClientController : MonoBehaviour
         if (!isConnected || playerRole == 0) return;
 
         float moveInput = 0f;
-        if (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.UpArrow))
+
+        // Leitura de entrada baseada no papel do jogador
+        if (playerRole == 1 || playerRole == 3)
         {
-            moveInput = 1f;
+            // Jogadores Verticais (J1 e J3)
+            if (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.UpArrow))
+            {
+                moveInput = 1f;
+            }
+            else if (Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.DownArrow))
+            {
+                moveInput = -1f;
+            }
         }
-        else if (Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.DownArrow))
+        else if (playerRole == 2 || playerRole == 4)
         {
-            moveInput = -1f;
+            // Jogadores Horizontais (J2 e J4)
+            if (Input.GetKey(KeyCode.D) || Input.GetKey(KeyCode.RightArrow))
+            {
+                moveInput = 1f;
+            }
+            else if (Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.LeftArrow))
+            {
+                moveInput = -1f;
+            }
         }
 
         if (moveInput != 0f && Time.time >= nextMoveSendTime)
@@ -186,9 +206,9 @@ public class UdpClientController : MonoBehaviour
             }
             else if (message.StartsWith("GAME_OVER|"))
             {
-                if (int.TryParse(message.Split('|')[1], out int winner))
+                if (int.TryParse(message.Split('|')[1], out int winningTeam))
                 {
-                    EnqueueMainThread(() => ShowGameOver(winner));
+                    EnqueueMainThread(() => ShowGameOver(winningTeam));
                 }
             }
             else if (message == "GAME_RESET")
@@ -208,22 +228,28 @@ public class UdpClientController : MonoBehaviour
     private void ParseState(string message)
     {
         string[] parts = message.Split('|');
-        if (parts.Length < 5) return;
+        if (parts.Length < 7) return; // Espera: STATE | p1Y | p2X | p3Y | p4X | ballX | ballY
 
-        string s1 = parts[1].Replace(',', '.');
-        string s2 = parts[2].Replace(',', '.');
-        string s3 = parts[3].Replace(',', '.');
-        string s4 = parts[4].Replace(',', '.');
+        string s1 = parts[1].Replace(',', '.'); // J1 - Y
+        string s2 = parts[2].Replace(',', '.'); // J2 - X
+        string s3 = parts[3].Replace(',', '.'); // J3 - Y
+        string s4 = parts[4].Replace(',', '.'); // J4 - X
+        string s5 = parts[5].Replace(',', '.'); // Ball X
+        string s6 = parts[6].Replace(',', '.'); // Ball Y
 
         if (float.TryParse(s1, NumberStyles.Any, CultureInfo.InvariantCulture, out float p1Y) &&
-            float.TryParse(s2, NumberStyles.Any, CultureInfo.InvariantCulture, out float p2Y) &&
-            float.TryParse(s3, NumberStyles.Any, CultureInfo.InvariantCulture, out float ballX) &&
-            float.TryParse(s4, NumberStyles.Any, CultureInfo.InvariantCulture, out float ballY))
+            float.TryParse(s2, NumberStyles.Any, CultureInfo.InvariantCulture, out float p2X) &&
+            float.TryParse(s3, NumberStyles.Any, CultureInfo.InvariantCulture, out float p3Y) &&
+            float.TryParse(s4, NumberStyles.Any, CultureInfo.InvariantCulture, out float p4X) &&
+            float.TryParse(s5, NumberStyles.Any, CultureInfo.InvariantCulture, out float ballX) &&
+            float.TryParse(s6, NumberStyles.Any, CultureInfo.InvariantCulture, out float ballY))
         {
             EnqueueMainThread(() =>
             {
                 if (p1Paddle != null) p1Paddle.position = new Vector3(p1Paddle.position.x, p1Y, p1Paddle.position.z);
-                if (p2Paddle != null) p2Paddle.position = new Vector3(p2Paddle.position.x, p2Y, p2Paddle.position.z);
+                if (p2Paddle != null) p2Paddle.position = new Vector3(p2X, p2Paddle.position.y, p2Paddle.position.z);
+                if (p3Paddle != null) p3Paddle.position = new Vector3(p3Paddle.position.x, p3Y, p3Paddle.position.z);
+                if (p4Paddle != null) p4Paddle.position = new Vector3(p4X, p4Paddle.position.y, p4Paddle.position.z);
                 if (ballTransform != null) ballTransform.position = new Vector3(ballX, ballY, ballTransform.position.z);
             });
         }
@@ -244,12 +270,14 @@ public class UdpClientController : MonoBehaviour
         });
     }
 
-    private void ShowGameOver(int winner)
+    private void ShowGameOver(int winningTeam)
     {
         if (gameOverPanel != null) gameOverPanel.SetActive(true);
         if (winnerText != null)
         {
-            winnerText.text = (winner == playerRole) ? "VOCÊ VENCEU!" : "VOCÊ PERDEU!";
+            // Determina a qual equipe o jogador pertence (J1 e J2 = Equipe 1 | J3 e J4 = Equipe 2)
+            int myTeam = (playerRole == 1 || playerRole == 2) ? 1 : 2;
+            winnerText.text = (winningTeam == myTeam) ? "SUA EQUIPE VENCEU!" : "SUA EQUIPE PERDEU!";
         }
     }
 
