@@ -195,8 +195,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2e114458fd29c7c409c176ae56dedac4, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GoalArea
-  goalOwner: 2
-  serverController: {fileID: 0}
+  teamOwner: 2
+  serverController: {fileID: 1152097195}
 --- !u!4 &18162696
 Transform:
   m_ObjectHideFlags: 0
@@ -472,8 +472,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2e114458fd29c7c409c176ae56dedac4, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GoalArea
-  goalOwner: 1
-  serverController: {fileID: 0}
+  teamOwner: 1
+  serverController: {fileID: 1152097195}
 --- !u!4 &165832610
 Transform:
   m_ObjectHideFlags: 0
@@ -1405,8 +1405,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2e114458fd29c7c409c176ae56dedac4, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GoalArea
-  goalOwner: 2
-  serverController: {fileID: 0}
+  teamOwner: 2
+  serverController: {fileID: 1152097195}
 --- !u!4 &503920248
 Transform:
   m_ObjectHideFlags: 0
@@ -2206,8 +2206,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2e114458fd29c7c409c176ae56dedac4, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GoalArea
-  goalOwner: 1
-  serverController: {fileID: 0}
+  teamOwner: 1
+  serverController: {fileID: 1152097195}
 --- !u!4 &887778326
 Transform:
   m_ObjectHideFlags: 0
@@ -2850,8 +2850,12 @@ MonoBehaviour:
   paddleSpeed: 1
   paddleMinY: -3.8
   paddleMaxY: 3.8
+  paddleMinX: -6.5
+  paddleMaxX: 6.5
   p1Paddle: {fileID: 798059929}
-  p2Paddle: {fileID: 2061258930}
+  p2Paddle: {fileID: 1183670527}
+  p3Paddle: {fileID: 2061258930}
+  p4Paddle: {fileID: 1591428323}
   ballTransform: {fileID: 450225152}
   ballScript: {fileID: 450225153}
 --- !u!4 &1152097196
@@ -2959,7 +2963,7 @@ GameObject:
   - component: {fileID: 1183670527}
   - component: {fileID: 1183670526}
   - component: {fileID: 1183670525}
-  - component: {fileID: 1183670524}
+  - component: {fileID: 1183670528}
   m_Layer: 0
   m_Name: Jogador2
   m_TagString: Untagged
@@ -2967,21 +2971,6 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &1183670524
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1183670523}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 3378e06b705166a4d84e24c1be67c815, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::PaddleServer
-  moveSpeed: 10
-  yMin: -3.5
-  yMax: 3.5
 --- !u!61 &1183670525
 BoxCollider2D:
   m_ObjectHideFlags: 0
@@ -3103,6 +3092,21 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 90}
+--- !u!114 &1183670528
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1183670523}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 55617b4d6f4a96a4dab88c96086d8d8f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::HorizontalPaddleServer
+  moveSpeed: 10
+  xMin: -6.5
+  xMax: 6.5
 --- !u!1 &1213515492
 GameObject:
   m_ObjectHideFlags: 0
@@ -4031,7 +4035,7 @@ GameObject:
   - component: {fileID: 1591428323}
   - component: {fileID: 1591428322}
   - component: {fileID: 1591428321}
-  - component: {fileID: 1591428320}
+  - component: {fileID: 1591428324}
   m_Layer: 0
   m_Name: Jogador4
   m_TagString: Untagged
@@ -4039,21 +4043,6 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &1591428320
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1591428319}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 3378e06b705166a4d84e24c1be67c815, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::PaddleServer
-  moveSpeed: 10
-  yMin: -3.5
-  yMax: 3.5
 --- !u!61 &1591428321
 BoxCollider2D:
   m_ObjectHideFlags: 0
@@ -4175,6 +4164,21 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 90}
+--- !u!114 &1591428324
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1591428319}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 55617b4d6f4a96a4dab88c96086d8d8f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::HorizontalPaddleServer
+  moveSpeed: 10
+  xMin: -6.5
+  xMax: 6.5
 --- !u!1 &1649844423
 GameObject:
   m_ObjectHideFlags: 0
@@ -4292,8 +4296,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2e114458fd29c7c409c176ae56dedac4, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GoalArea
-  goalOwner: 2
-  serverController: {fileID: 0}
+  teamOwner: 2
+  serverController: {fileID: 1152097195}
 --- !u!4 &1683241579
 Transform:
   m_ObjectHideFlags: 0
@@ -5275,8 +5279,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2e114458fd29c7c409c176ae56dedac4, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GoalArea
-  goalOwner: 1
-  serverController: {fileID: 0}
+  teamOwner: 1
+  serverController: {fileID: 1152097195}
 --- !u!4 &1920004851
 Transform:
   m_ObjectHideFlags: 0
