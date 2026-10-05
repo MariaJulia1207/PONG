@@ -11,26 +11,37 @@ public class UdpServerController : MonoBehaviour
     [Header("Configurações do Servidor")]
     public int listenPort = 9050;
     public int maxScore = 5;
-    public float paddleSpeed = 0.3f;
+    public float paddleSpeed = 10f;
+
+    [Header("Limites Verticais (J1 e J3)")]
     public float paddleMinY = -3.8f;
     public float paddleMaxY = 3.8f;
 
-    [Header("Objetos do Jogo na Cena")]
-    public Transform p1Paddle;
-    public Transform p2Paddle;
+    [Header("Limites Horizontais (J2 e J4)")]
+    public float paddleMinX = -6.5f;
+    public float paddleMaxX = 6.5f;
+
+    [Header("Equipe 1 (Verde)")]
+    public Transform p1Paddle; // J1 - Esquerda (Vertical)
+    public Transform p2Paddle; // J2 - Topo (Horizontal)
+
+    [Header("Equipe 2 (Vermelho)")]
+    public Transform p3Paddle; // J3 - Direita (Vertical)
+    public Transform p4Paddle; // J4 - Baixo (Horizontal)
+
+    [Header("Bola")]
     public Transform ballTransform;
     public Ball ballScript;
 
     private UdpClient udpServer;
     private List<IPEndPoint> connectedClients = new List<IPEndPoint>();
 
-    private int scoreP1 = 0;
-    private int scoreP2 = 0;
+    private int scoreTeam1 = 0;
+    private int scoreTeam2 = 0;
     private bool gameStarted = false;
     private bool isGameOver = false;
 
-    // Frequência fixa de envio de posições (60Hz)
-    private float stateSendRate = 0.016f;
+    private float stateSendRate = 0.016f; // ~60 FPS
     private float nextSendTime = 0f;
 
     private static readonly Queue<Action> mainThreadQueue = new Queue<Action>();
@@ -56,7 +67,7 @@ public class UdpServerController : MonoBehaviour
             catch { }
 
             udpServer.BeginReceive(OnDataReceived, null);
-            Debug.Log($"[SERVIDOR] Servidor rodando na porta {listenPort}. Aguardando jogadores...");
+            Debug.Log($"[SERVIDOR 2v2] Servidor rodando na porta {listenPort}. Aguardando 4 jogadores...");
         }
         catch (Exception e)
         {
@@ -66,7 +77,6 @@ public class UdpServerController : MonoBehaviour
 
     private void Update()
     {
-        // 1. Processa ações pendentes na Main Thread da Unity
         lock (mainThreadQueue)
         {
             while (mainThreadQueue.Count > 0)
@@ -75,7 +85,6 @@ public class UdpServerController : MonoBehaviour
             }
         }
 
-        // 2. Envia posições SEMPRE que houver ao menos 1 cliente (impede congelamento)
         if (connectedClients.Count > 0 && Time.time >= nextSendTime)
         {
             nextSendTime = Time.time + stateSendRate;
@@ -125,7 +134,7 @@ public class UdpServerController : MonoBehaviour
     {
         int existingIndex = GetPlayerIndex(remoteEP);
 
-        if (existingIndex == -1 && connectedClients.Count < 2)
+        if (existingIndex == -1 && connectedClients.Count < 4)
         {
             connectedClients.Add(remoteEP);
             int assignedID = connectedClients.Count;
@@ -133,12 +142,12 @@ public class UdpServerController : MonoBehaviour
             SendToClient($"ASSIGN:{assignedID}", remoteEP);
             Debug.Log($"[SERVIDOR] Jogador {assignedID} conectado de {remoteEP}");
 
-            // Inicia a partida e lança a bola quando o 2º cliente conectar
-            if (connectedClients.Count == 2 && !gameStarted)
+            // Inicia a partida e lança a bola quando os 4 jogadores se conectarem
+            if (connectedClients.Count == 4 && !gameStarted)
             {
                 gameStarted = true;
                 isGameOver = false;
-                Debug.Log("[SERVIDOR] Ambos os jogadores conectados! Lançando a bola...");
+                Debug.Log("[SERVIDOR] Os 4 jogadores estão conectados! Lançando a bola...");
 
                 EnqueueMainThread(() =>
                 {
@@ -182,51 +191,75 @@ public class UdpServerController : MonoBehaviour
 
     private void MovePlayer(int playerId, float dir)
     {
-        Transform paddle = (playerId == 1) ? p1Paddle : p2Paddle;
+        if (playerId == 1) // Eq 1 - J1 (Esquerda - Vertical)
+        {
+            MoveVertical(p1Paddle, dir);
+        }
+        else if (playerId == 2) // Eq 1 - J2 (Topo - Horizontal)
+        {
+            MoveHorizontal(p2Paddle, dir);
+        }
+        else if (playerId == 3) // Eq 2 - J3 (Direita - Vertical)
+        {
+            MoveVertical(p3Paddle, dir);
+        }
+        else if (playerId == 4) // Eq 2 - J4 (Baixo - Horizontal)
+        {
+            MoveHorizontal(p4Paddle, dir);
+        }
+    }
+
+    private void MoveVertical(Transform paddle, float dir)
+    {
         if (paddle == null) return;
-
-        float newY = paddle.position.y + (dir * paddleSpeed);
+        float newY = paddle.position.y + (dir * paddleSpeed * Time.deltaTime);
         newY = Mathf.Clamp(newY, paddleMinY, paddleMaxY);
-
         paddle.position = new Vector3(paddle.position.x, newY, paddle.position.z);
     }
 
-    public void AddPointToPlayer(int playerNum)
+    private void MoveHorizontal(Transform paddle, float dir)
+    {
+        if (paddle == null) return;
+        float newX = paddle.position.x + (dir * paddleSpeed * Time.deltaTime);
+        newX = Mathf.Clamp(newX, paddleMinX, paddleMaxX);
+        paddle.position = new Vector3(newX, paddle.position.y, paddle.position.z);
+    }
+
+    public void AddPointToTeam(int teamNum)
     {
         if (isGameOver) return;
 
-        if (playerNum == 1) scoreP1++;
-        else if (playerNum == 2) scoreP2++;
+        if (teamNum == 1) scoreTeam1++;
+        else if (teamNum == 2) scoreTeam2++;
 
-        Debug.Log($"[SERVIDOR] Gol! Placar: P1 {scoreP1} x {scoreP2} P2");
+        Debug.Log($"[SERVIDOR] Gol! Placar: Equipe 1 ({scoreTeam1}) x ({scoreTeam2}) Equipe 2");
 
-        // Transmite o novo placar aos clientes
-        SendBroadcastMessage($"SCORE|{scoreP1}|{scoreP2}");
+        SendBroadcastMessage($"SCORE|{scoreTeam1}|{scoreTeam2}");
 
-        if (scoreP1 >= maxScore)
+        if (scoreTeam1 >= maxScore)
         {
             EndGame(1);
         }
-        else if (scoreP2 >= maxScore)
+        else if (scoreTeam2 >= maxScore)
         {
             EndGame(2);
         }
     }
 
-    private void EndGame(int winnerPlayer)
+    private void EndGame(int winningTeam)
     {
         isGameOver = true;
-        Debug.Log($"[SERVIDOR] Fim de jogo! Jogador {winnerPlayer} venceu.");
-        SendBroadcastMessage($"GAME_OVER|{winnerPlayer}");
+        Debug.Log($"[SERVIDOR] Fim de jogo! Equipe {winningTeam} venceu.");
+        SendBroadcastMessage($"GAME_OVER|{winningTeam}");
     }
 
     public void RestartGame()
     {
-        scoreP1 = 0;
-        scoreP2 = 0;
+        scoreTeam1 = 0;
+        scoreTeam2 = 0;
         isGameOver = false;
 
-        SendBroadcastMessage($"SCORE|{scoreP1}|{scoreP2}");
+        SendBroadcastMessage($"SCORE|{scoreTeam1}|{scoreTeam2}");
         SendBroadcastMessage("GAME_RESET");
 
         if (ballScript != null)
@@ -244,14 +277,17 @@ public class UdpServerController : MonoBehaviour
 
     private void SendStateToClients()
     {
-        if (p1Paddle == null || p2Paddle == null || ballTransform == null) return;
+        if (p1Paddle == null || p2Paddle == null || p3Paddle == null || p4Paddle == null || ballTransform == null) return;
 
         string p1Y = p1Paddle.position.y.ToString("F2", CultureInfo.InvariantCulture);
-        string p2Y = p2Paddle.position.y.ToString("F2", CultureInfo.InvariantCulture);
+        string p2X = p2Paddle.position.x.ToString("F2", CultureInfo.InvariantCulture);
+        string p3Y = p3Paddle.position.y.ToString("F2", CultureInfo.InvariantCulture);
+        string p4X = p4Paddle.position.x.ToString("F2", CultureInfo.InvariantCulture);
+
         string bX = ballTransform.position.x.ToString("F2", CultureInfo.InvariantCulture);
         string bY = ballTransform.position.y.ToString("F2", CultureInfo.InvariantCulture);
 
-        string stateMsg = $"STATE|{p1Y}|{p2Y}|{bX}|{bY}";
+        string stateMsg = $"STATE|{p1Y}|{p2X}|{p3Y}|{p4X}|{bX}|{bY}";
         SendBroadcastMessage(stateMsg);
     }
 
@@ -278,13 +314,6 @@ public class UdpServerController : MonoBehaviour
         }
     }
 
-    private void OnDestroy()
-    {
-        udpServer?.Close();
-    }
-
-    private void OnApplicationQuit()
-    {
-        udpServer?.Close();
-    }
+    private void OnDestroy() { udpServer?.Close(); }
+    private void OnApplicationQuit() { udpServer?.Close(); }
 }

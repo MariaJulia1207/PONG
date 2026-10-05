@@ -3,8 +3,8 @@ using UnityEngine;
 public class GoalArea : MonoBehaviour
 {
     [Header("Configuração da Baliza")]
-    [Tooltip("1 = Baliza do P1 (Golo do P2) | 2 = Baliza do P2 (Golo do P1)")]
-    [SerializeField] private int goalOwner = 1;
+    [Tooltip("1 = Área da Equipe 1 (Ponto para Equipe 2) | 2 = Área da Equipe 2 (Ponto para Equipe 1)")]
+    [SerializeField] private int teamOwner = 1;
 
     [SerializeField] private UdpServerController serverController;
 
@@ -18,18 +18,17 @@ public class GoalArea : MonoBehaviour
 
     private void OnTriggerEnter2D(Collider2D other)
     {
-        // Garante que apenas o objeto com o script Ball ou Tag "Ball" ativa o gol
         Ball ball = other.GetComponent<Ball>();
         if (ball == null) return;
 
-        // Atribui o ponto ao jogador adversário
-        if (goalOwner == 1)
+        // Atribui o ponto à equipe adversária
+        if (teamOwner == 1)
         {
-            serverController?.AddPointToPlayer(2);
+            serverController?.AddPointToTeam(2);
         }
-        else if (goalOwner == 2)
+        else if (teamOwner == 2)
         {
-            serverController?.AddPointToPlayer(1);
+            serverController?.AddPointToTeam(1);
         }
 
         // Zera a física da bola e reseta para o centro (0,0)
