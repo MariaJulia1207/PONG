@@ -2755,10 +2755,10 @@ MonoBehaviour:
   listenPort: 9050
   maxScore: 5
   paddleSpeed: 1
-  paddleMinY: -3.8
-  paddleMaxY: 3.8
-  paddleMinX: -6.5
-  paddleMaxX: 6.5
+  paddleMinY: -5.25
+  paddleMaxY: 4
+  paddleMinX: -7.5
+  paddleMaxX: 7.5
   p1Paddle: {fileID: 798059929}
   p2Paddle: {fileID: 1183670527}
   p3Paddle: {fileID: 2061258930}
