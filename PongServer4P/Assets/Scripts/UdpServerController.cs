@@ -11,7 +11,7 @@ public class UdpServerController : MonoBehaviour
     [Header("Configurações do Servidor")]
     public int listenPort = 9050;
     public int maxScore = 5;
-    public float paddleSpeed = 10f;
+    public float paddleSpeed = 15f; // Velocidade ajustada para resposta imediata
 
     [Header("Limites Verticais (J1 e J3)")]
     public float paddleMinY = -3.8f;
@@ -167,7 +167,6 @@ public class UdpServerController : MonoBehaviour
         }
         else if (existingIndex != -1)
         {
-            // Se o mesmo cliente já conectado reenviar CONNECT, atualiza seu endpoint e reenvia a atribuição
             connectedClients[existingIndex] = remoteEP;
             SendToClient($"ASSIGN:{existingIndex + 1}", remoteEP);
         }
@@ -177,7 +176,6 @@ public class UdpServerController : MonoBehaviour
     {
         for (int i = 0; i < connectedClients.Count; i++)
         {
-            // Valida por IP e Porta simultaneamente para suportar múltiplos clientes no mesmo PC
             if (connectedClients[i].Equals(remoteEP))
             {
                 return i;
@@ -209,16 +207,22 @@ public class UdpServerController : MonoBehaviour
     private void MoveVertical(Transform paddle, float dir)
     {
         if (paddle == null) return;
-        float newY = paddle.position.y + (dir * paddleSpeed * Time.deltaTime);
-        newY = Mathf.Clamp(newY, paddleMinY, paddleMaxY);
+        
+        // Movimento direto proporcional ao tempo de intervalo do pacote de entrada (0.05s)
+        float step = dir * paddleSpeed * 0.05f;
+        float newY = paddle.position.y + step;
+        
         paddle.position = new Vector3(paddle.position.x, newY, paddle.position.z);
     }
 
     private void MoveHorizontal(Transform paddle, float dir)
     {
         if (paddle == null) return;
-        float newX = paddle.position.x + (dir * paddleSpeed * Time.deltaTime);
-        newX = Mathf.Clamp(newX, paddleMinX, paddleMaxX);
+        
+        // Movimento direto proporcional ao tempo de intervalo do pacote de entrada (0.05s)
+        float step = dir * paddleSpeed * 0.05f;
+        float newX = paddle.position.x + step;
+        
         paddle.position = new Vector3(newX, paddle.position.y, paddle.position.z);
     }
 
@@ -274,7 +278,6 @@ public class UdpServerController : MonoBehaviour
 
     private void SendStateToClients()
     {
-        // Posições com fallback caso algum Transform ainda não esteja vinculado no Inspector
         string p1Y = (p1Paddle != null) ? p1Paddle.position.y.ToString("F2", CultureInfo.InvariantCulture) : "0.00";
         string p2X = (p2Paddle != null) ? p2Paddle.position.x.ToString("F2", CultureInfo.InvariantCulture) : "0.00";
         string p3Y = (p3Paddle != null) ? p3Paddle.position.y.ToString("F2", CultureInfo.InvariantCulture) : "0.00";
