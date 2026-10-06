@@ -106,6 +106,7 @@ public class UdpClientController : MonoBehaviour
 
             udpClient.BeginReceive(OnDataReceived, null);
             isConnected = true;
+            nextMoveSendTime = 0f; // Reseta o timer de envio
             Debug.Log($"[CLIENTE] Solicitando conexão ao servidor em {ipAddressStr}:{serverPort}...");
         }
         catch (Exception e)
@@ -188,7 +189,6 @@ public class UdpClientController : MonoBehaviour
                     {
                         playerRole = assignedId;
 
-                        // Mapeamento visual das cores e posições para exibir no console do cliente
                         string playerInfo = playerRole switch
                         {
                             1 => "Jogador 1 (Verde - Esquerda)",
@@ -286,7 +286,6 @@ public class UdpClientController : MonoBehaviour
         if (gameOverPanel != null) gameOverPanel.SetActive(true);
         if (winnerText != null)
         {
-            // Determina a qual equipe o jogador pertence (J1 e J2 = Equipe 1 | J3 e J4 = Equipe 2)
             int myTeam = (playerRole == 1 || playerRole == 2) ? 1 : 2;
             winnerText.text = (winningTeam == myTeam) ? "SUA EQUIPE VENCEU!" : "SUA EQUIPE PERDEU!";
         }
