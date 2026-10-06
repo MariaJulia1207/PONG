@@ -108,8 +108,6 @@ public class UdpServerController : MonoBehaviour
             }
             else if (message.StartsWith("MOVE:"))
             {
-                UpdateClientEndpoint(remoteEP);
-
                 int playerIndex = GetPlayerIndex(remoteEP);
                 if (playerIndex != -1 && float.TryParse(message.Split(':')[1], NumberStyles.Any, CultureInfo.InvariantCulture, out float moveDir))
                 {
@@ -141,7 +139,6 @@ public class UdpServerController : MonoBehaviour
 
             SendToClient($"ASSIGN:{assignedID}", remoteEP);
 
-            // Mapeia o jogador para sua cor e posição para exibição detalhada no console
             string playerInfo = assignedID switch
             {
                 1 => "Jogador 1 (Verde - Esquerda)",
@@ -153,7 +150,6 @@ public class UdpServerController : MonoBehaviour
 
             Debug.Log($"[SERVIDOR] {playerInfo} conectado de {remoteEP}");
 
-            // Inicia a partida e lança a bola quando os 4 jogadores se conectarem
             if (connectedClients.Count == 4 && !gameStarted)
             {
                 gameStarted = true;
@@ -171,20 +167,9 @@ public class UdpServerController : MonoBehaviour
         }
         else if (existingIndex != -1)
         {
+            // Se o mesmo cliente já conectado reenviar CONNECT, atualiza seu endpoint e reenvia a atribuição
             connectedClients[existingIndex] = remoteEP;
             SendToClient($"ASSIGN:{existingIndex + 1}", remoteEP);
-        }
-    }
-
-    private void UpdateClientEndpoint(IPEndPoint remoteEP)
-    {
-        for (int i = 0; i < connectedClients.Count; i++)
-        {
-            if (connectedClients[i].Address.Equals(remoteEP.Address) && connectedClients[i].Port != remoteEP.Port)
-            {
-                connectedClients[i] = remoteEP;
-                break;
-            }
         }
     }
 
@@ -192,7 +177,8 @@ public class UdpServerController : MonoBehaviour
     {
         for (int i = 0; i < connectedClients.Count; i++)
         {
-            if (connectedClients[i].Address.Equals(remoteEP.Address))
+            // Valida por IP e Porta simultaneamente para suportar múltiplos clientes no mesmo PC
+            if (connectedClients[i].Equals(remoteEP))
             {
                 return i;
             }
@@ -288,15 +274,14 @@ public class UdpServerController : MonoBehaviour
 
     private void SendStateToClients()
     {
-        if (p1Paddle == null || p2Paddle == null || p3Paddle == null || p4Paddle == null || ballTransform == null) return;
+        // Posições com fallback caso algum Transform ainda não esteja vinculado no Inspector
+        string p1Y = (p1Paddle != null) ? p1Paddle.position.y.ToString("F2", CultureInfo.InvariantCulture) : "0.00";
+        string p2X = (p2Paddle != null) ? p2Paddle.position.x.ToString("F2", CultureInfo.InvariantCulture) : "0.00";
+        string p3Y = (p3Paddle != null) ? p3Paddle.position.y.ToString("F2", CultureInfo.InvariantCulture) : "0.00";
+        string p4X = (p4Paddle != null) ? p4Paddle.position.x.ToString("F2", CultureInfo.InvariantCulture) : "0.00";
 
-        string p1Y = p1Paddle.position.y.ToString("F2", CultureInfo.InvariantCulture);
-        string p2X = p2Paddle.position.x.ToString("F2", CultureInfo.InvariantCulture);
-        string p3Y = p3Paddle.position.y.ToString("F2", CultureInfo.InvariantCulture);
-        string p4X = p4Paddle.position.x.ToString("F2", CultureInfo.InvariantCulture);
-
-        string bX = ballTransform.position.x.ToString("F2", CultureInfo.InvariantCulture);
-        string bY = ballTransform.position.y.ToString("F2", CultureInfo.InvariantCulture);
+        string bX = (ballTransform != null) ? ballTransform.position.x.ToString("F2", CultureInfo.InvariantCulture) : "0.00";
+        string bY = (ballTransform != null) ? ballTransform.position.y.ToString("F2", CultureInfo.InvariantCulture) : "0.00";
 
         string stateMsg = $"STATE|{p1Y}|{p2X}|{p3Y}|{p4X}|{bX}|{bY}";
         SendBroadcastMessage(stateMsg);
