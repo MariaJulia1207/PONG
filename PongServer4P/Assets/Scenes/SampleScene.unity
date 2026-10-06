@@ -1908,7 +1908,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3378e06b705166a4d84e24c1be67c815, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PaddleServer
-  moveSpeed: 20
+  moveSpeed: 100
   yMin: -5.5
   yMax: 4.5
 --- !u!1 &853760303
@@ -3011,7 +3011,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 55617b4d6f4a96a4dab88c96086d8d8f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::HorizontalPaddleServer
-  moveSpeed: 20
+  moveSpeed: 100
   xMin: -7.5
   xMax: 7.5
 --- !u!1 &1213515492
@@ -4083,7 +4083,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 55617b4d6f4a96a4dab88c96086d8d8f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::HorizontalPaddleServer
-  moveSpeed: 20
+  moveSpeed: 100
   xMin: -7.5
   xMax: 7.5
 --- !u!1 &1649844423
@@ -5262,7 +5262,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3378e06b705166a4d84e24c1be67c815, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PaddleServer
-  moveSpeed: 20
+  moveSpeed: 100
   yMin: -5.5
   yMax: 4.5
 --- !u!1 &2061561500
