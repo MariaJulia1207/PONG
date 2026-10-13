@@ -2754,7 +2754,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::UdpServerController
   listenPort: 9050
   maxScore: 5
-  paddleSpeed: 5
+  paddleSpeed: 2
   paddleMinY: -5.25
   paddleMaxY: 4
   paddleMinX: -7.5
